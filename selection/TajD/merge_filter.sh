@@ -1,8 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=TajD_merge
 #SBATCH --partition=long
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --nodes=1
 #SBATCH --ntasks=24
 #SBATCH --mem=100gb

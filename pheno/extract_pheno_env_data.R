@@ -61,9 +61,15 @@ output_file   <- "/private/groups/meyerlab/esteiger/pheno/emma_gee_results_final
 plots_dir     <- "/private/groups/meyerlab/esteiger/pheno/"
 pheno_file    <- "/private/groups/meyerlab/esteiger/pheno/gvtp_phenotype_13feb2026.tsv"
 
-# Crop extent for PRISM rasters: covers the full sample coordinate range
-# (Lat 34.4456-35.17469, Long -120.7174 to -120.18) with a small buffer.
-bbox_extent   <- ext(-120.75, -120.1, 34.4, 35.2)
+# Crop extent for PRISM rasters: widened 2026-10-27 to California-wide
+# (was ext(-120.75,-120.1,34.4,35.2), the tiny Pt Conception study bbox) so
+# the archive can also serve the standalone CA summer-precip trend map
+# (env/download_crop_prism_ca.R) without a second copy of the data. Still a
+# strict superset of every sample coordinate, so nothing here changes for
+# the point-extraction logic below -- this just keeps Section 3b's
+# crop_ppt_archive_inplace() (only runs if RUN_FULL_EXTRACTION <- TRUE) from
+# cropping the CA-wide files back down to the old tiny bbox if ever re-run.
+bbox_extent   <- ext(-124.6, -113.9, 32.4, 42.2)
 
 fog_months    <- 6:9   # June through September
 fog_year_min  <- 2000
@@ -1217,25 +1223,24 @@ cat("Rows with complete fog across 2000-2025:", n_fog, "/", nrow(out), "\n")
 #     env/extract_BCM_CWD.R), NAD83 California Teale Albers (EPSG:3310),
 #     270 m, at /private/groups/meyerlab/esteiger/env/BCM/.
 #
-#     Window caveat: BIO12/15/18_25yr average water years 2000-2024
-#     (PRISM archive runs through Sep 2024). The BCM CWD archive on disk
-#     only has monthly rasters through WY2022 (cwd_WY2000_09.zip,
-#     cwd_WY2010_20.zip, cwd_WY2021.zip, cwd_WY2022.zip — no WY2023/2024
-#     zips yet). CWD_25yr is therefore a 23-water-year mean (2000-2022),
-#     the closest available analog to the other "_25yr" columns, not a
-#     true 25-year window. Extend `cwd_ref_years` below and add the
-#     missing zips (see env/extract_BCM_CWD.R for the ScienceBase source
-#     URLs) once WY2023/2024 CWD rasters are available.
+#     Window caveat (resolved 2026-10-22): BIO12/15/18_25yr average water
+#     years 2000-2024 (PRISM archive runs through Sep 2024). The BCM CWD
+#     archive on disk previously only had monthly rasters through WY2022;
+#     cwd_WY2023.zip, cwd_WY2024.zip, and cwd_WY2025.zip have since been
+#     downloaded from ScienceBase (same BCMv8 statewide CWD collection,
+#     DOI 10.5066/P9PT36UI — see env/extract_BCM_CWD.R for item IDs), so
+#     CWD_25yr is now a 26-water-year mean (2000-2025), matching/exceeding
+#     the other "_25yr" columns' coverage rather than trailing them.
 # ============================================================
 
 cat("\n=== Section 12: BCM CWD_25yr extraction ===\n\n")
 
-# Unzipping+summing 23 water years of BCM rasters takes ~20 min. Once
-# CWD_25yr is in output_file for every sample, skip re-doing that on every
-# re-run — flip to TRUE (or delete the CWD_25yr column from the csv) to
-# force a re-extraction, e.g. after WY2023/2024 zips are added.
+# Unzipping+summing 26 water years of BCM rasters takes a while (~20 min
+# for the original 23 years). Once CWD_25yr is in output_file for every
+# sample, skip re-doing that on every re-run — flip to TRUE (or delete
+# the CWD_25yr column from the csv) to force a re-extraction.
 cwd_bcm_dir   <- "/private/groups/meyerlab/esteiger/env/BCM"
-cwd_ref_years <- 2000:2022   # see window caveat above
+cwd_ref_years <- 2000:2025   # see window caveat above
 
 # --- helpers (same logic as env/extract_BCM_CWD.R) — defined unconditionally
 #     (cheap) so Section 14 can reuse them for a handful of new coordinates
@@ -1250,8 +1255,7 @@ wy_files_12 <- function(yr) {
 get_wy_zip_12 <- function(yr) {
   if      (yr <= 2009) file.path(cwd_bcm_dir, "cwd_WY2000_09.zip")
   else if (yr <= 2020) file.path(cwd_bcm_dir, "cwd_WY2010_20.zip")
-  else if (yr == 2021) file.path(cwd_bcm_dir, "cwd_WY2021.zip")
-  else if (yr == 2022) file.path(cwd_bcm_dir, "cwd_WY2022.zip")
+  else if (yr <= 2025) file.path(cwd_bcm_dir, sprintf("cwd_WY%d.zip", yr))
   else stop(sprintf("No BCM CWD zip available for WY%d", yr))
 }
 
@@ -1340,12 +1344,25 @@ cat(sprintf("\nCWD_25yr (WY%d-%d mean): %d / %d coordinates non-NA\n",
 
 # --- join onto every sample sharing that coordinate, merge into the
 #     existing emma_gee_results_final.csv, and write it back ---
+#
+#     CWD_25yr depends only on (Lat, Long), never on SampleID, so it's
+#     assigned via a direct keyed lookup against the ORIGINAL row order
+#     -- never reconstructing/reordering the dataframe through merge() +
+#     match(existing$SampleID, ...). That reorder-by-SampleID approach
+#     silently corrupted OTHER columns (fog_modern, BIO18_modern, etc.)
+#     for any SampleID that appears more than once in the file (found
+#     2026-10-22: SampleIDs 6083 and 8071 each have two rows sharing one
+#     coordinate; match() mapped both of a duplicated ID's rows onto
+#     whichever one came first in merged's internal order, discarding
+#     the other row's real values). existing$SampleID is NOT guaranteed
+#     unique (confirmed duplicates exist), so never key a reorder on it.
 
 existing <- read.csv(output_file)
 existing$CWD_25yr <- NULL   # drop any stale copy from a previous run
-merged   <- merge(existing, uniq_xy12, by = c("Lat", "Long"), all.x = TRUE, sort = FALSE)
-merged   <- merged[match(existing$SampleID, merged$SampleID), ]
-rownames(merged) <- NULL
+key_existing <- paste(round(existing$Lat, 8), round(existing$Long, 8))
+key_uniq     <- paste(round(uniq_xy12$Lat, 8), round(uniq_xy12$Long, 8))
+existing$CWD_25yr <- uniq_xy12$CWD_25yr[match(key_existing, key_uniq)]
+merged <- existing
 
 write.csv(merged, output_file, row.names = FALSE)
 cat("\nCWD_25yr added to", output_file, "\n")
@@ -1699,39 +1716,44 @@ cat("\nHeatmap written to",
     file.path(plots_dir, "env_selection_correlation_heatmap_25yr_modeling_vars.jpg"), "\n")
 
 # ============================================================
-# 15. Rolling 10-year (inclusive of germination year) env variables:
+# 15. Rolling 20-year (inclusive of germination year) env variables:
 #     _modern (fog/BIO18/BIO15, for modern_data.R) and _historic
-#     (Kling/BIO18/BIO15, for historic_data.R)
+#     (Kling/BIO18/BIO15/CWD, for historic_data.R)
 #
 #     Replaces the earlier FIXED-reference-window _25yr/_65yr approach
 #     (Sections 5b/7/12/13 above, no longer used by modern_data.R/
 #     historic_data.R, but left in place rather than deleted) with a
 #     window tied to each specimen's OWN germination year:
-#     [germYear - 9, germYear], 10 years, INCLUDING the germination year
-#     itself (user decision 2026-09-06). CWD is dropped entirely — BCM
-#     data only covers water years 2000-2022, which would cap
-#     modern_data.R's usable range at germYear 2009-2022, losing 72% of
-#     the dataset (the dense 2023-2024 cluster) — not worth it when
-#     fog/BIO12/15/18 alone cover germYear up to 2024.
+#     [germYear - (ROLL_WINDOW-1), germYear], ROLL_WINDOW=20 years,
+#     INCLUDING the germination year itself (window length matched to
+#     modern_data.R's own CWD window, user decision 2026-10-26). Not every
+#     one of those 20 years needs to be present -- see MIN_WINDOW_COVERAGE
+#     below -- so a specimen isn't dropped just for 1-2 missing years.
 #
-#     Coverage constraints (all-or-nothing per specimen via
-#     rowMeans(..., na.rm=FALSE) — a specimen whose window isn't FULLY
-#     within a source's range gets NA for that variable, never a
-#     partial-window average):
-#       fog_modern:      needs germYear in [fog_year_min+9, fog_year_max]
-#                         = [2009, 2025] (fog: 2000-2025)
-#       BIO*_modern:     needs germYear in [1936, prism_wy_last] = up to
-#                         2024 (PRISM: 1927-2024) — the binding upper
-#                         constraint for modern_data.R
-#       Kling_historic:  needs germYear in [min(kling_years)+9,
-#                         max(kling_years)] = [1959, 2014] (Kling:
-#                         1950-2014) — the binding constraint for
-#                         historic_data.R (BIO*_historic's PRISM-based
-#                         range, up to 2024, is much wider and never
-#                         binds here)
-#     -> modern_data.R's effective range: germYear 2009-2024
-#     -> historic_data.R's effective range: germYear 1959-2014 (small
-#        sample, ~24 specimens — accepted; see project memory)
+#     CWD is now included (as of 2026-10-26), via
+#     env/crop_cache_bcm_cwd_annual.R's pre-cropped per-water-year raster
+#     cache (env/BCM/cwd_annual_cropped/) rather than re-unzipping a
+#     statewide BCM zip on every germYear window -- that per-window unzip
+#     cost is what got CWD dropped from this section originally, when the
+#     cache only covered WY2000-2022. The cache was later extended back to
+#     WY1900 (see that script), comfortably covering the full historic
+#     specimen record (germYear 1927-2024), so CWD is no longer the
+#     binding constraint for historic_data.R the way Kling's narrower
+#     1950-2014 range still is.
+#
+#     Coverage constraints (via safe_rowMeans()'s MIN_WINDOW_COVERAGE, not
+#     an all-or-nothing requirement that every one of the ROLL_WINDOW
+#     years be present): a specimen's germYear must fall within
+#     [source_min + ROLL_WINDOW - 1, source_max] (+/- GATE_BUFFER) for
+#     that source:
+#       fog_modern:      fog (Werner): 2000-2025
+#       BIO*_modern/historic: PRISM: 1927-2024 -- wide enough to never
+#                         bind for either modern_data.R or historic_data.R
+#       Kling_historic:  Kling: 1950-2014 -- the binding constraint for
+#                         historic_data.R's fog/Kling variable
+#       CWD_historic:    BCM cache: see cwd_cache_years above (adapts
+#                         automatically to however much of WY1900-2025 has
+#                         been downloaded/cached)
 # ============================================================
 
 cat("\n=== Section 15: rolling 10yr (incl. germ year) env variables ===\n\n")
@@ -1747,6 +1769,28 @@ extract_kling_seasonal_15 <- function(year, lats, lons) {
   pts <- vect(data.frame(x = lons, y = lats), geom = c("x", "y"), crs = "EPSG:4326")
   pts <- project(pts, crs(r_kling_ts_15))
   extract(r_kling_ts_15[[yr_chr]], pts)[, 2]
+}
+
+# --- CWD, now feasible here thanks to env/crop_cache_bcm_cwd_annual.R's
+#     pre-cropped per-water-year cache (env/BCM/cwd_annual_cropped/
+#     cwd_WY<year>.tif, one small raster per year rather than a statewide
+#     zip needing a fresh unzip+crop+sum every time a germYear window
+#     touches it -- this is exactly the cost that got CWD dropped from this
+#     section in the first place, per the comment above). Cache spans
+#     whatever decade zips have been downloaded/processed; computed
+#     dynamically below so this adapts automatically as more years are added.
+cwd_cache_dir   <- "/private/groups/meyerlab/esteiger/env/BCM/cwd_annual_cropped"
+cwd_cache_files <- list.files(cwd_cache_dir, pattern = "^cwd_WY[0-9]{4}\\.tif$")
+cwd_cache_years <- sort(as.integer(gsub("[^0-9]", "", cwd_cache_files)))
+cat(sprintf("CWD annual cache: %d year(s) available (%s)\n", length(cwd_cache_years),
+            if (length(cwd_cache_years) > 0) paste(range(cwd_cache_years), collapse = "-") else "none"))
+
+extract_cwd_annual_15 <- function(year, lats, lons) {
+  if (!(year %in% cwd_cache_years)) return(rep(NA_real_, length(lats)))
+  r <- rast(file.path(cwd_cache_dir, sprintf("cwd_WY%d.tif", year)))
+  pts <- vect(data.frame(x = lons, y = lats), geom = c("x", "y"), crs = "EPSG:4326")
+  pts <- project(pts, crs(r))
+  extract(r, pts)[, 2]
 }
 
 # --- assemble the full specimen list (phenotype file + iNat-only rows,
@@ -1813,23 +1857,25 @@ safe_rowMeans <- function(mat, min_frac = MIN_WINDOW_COVERAGE) {
 # makes the real per-specimen call from actual per-year data.
 GATE_BUFFER <- ROLL_WINDOW - ceiling(MIN_WINDOW_COVERAGE * ROLL_WINDOW)  # 20*0.9 -> 2 years
 
-compute_rolling_15 <- function(samples, source, fog_min, fog_max, bio_min, bio_max) {
+compute_rolling_15 <- function(samples, source, fog_min, fog_max, bio_min, bio_max, cwd_min, cwd_max) {
   n <- nrow(samples)
-  val_fog <- val_bio12 <- val_bio15 <- val_bio18 <- rep(NA_real_, n)
+  val_fog <- val_bio12 <- val_bio15 <- val_bio18 <- val_cwd <- rep(NA_real_, n)
   ok_fog <- !is.na(samples$GermYear) & samples$GermYear >= fog_min - GATE_BUFFER & samples$GermYear <= fog_max + GATE_BUFFER
   ok_bio <- !is.na(samples$GermYear) & samples$GermYear >= bio_min - GATE_BUFFER & samples$GermYear <= bio_max + GATE_BUFFER
-  ok_any <- ok_fog | ok_bio
-  cat(sprintf("  %s: fog/Kling in-range=%d, BIO12/15/18 in-range=%d (of %d specimens)\n",
-              source, sum(ok_fog), sum(ok_bio), n))
+  ok_cwd <- !is.na(samples$GermYear) & samples$GermYear >= cwd_min - GATE_BUFFER & samples$GermYear <= cwd_max + GATE_BUFFER
+  ok_any <- ok_fog | ok_bio | ok_cwd
+  cat(sprintf("  %s: fog/Kling in-range=%d, BIO12/15/18 in-range=%d, CWD in-range=%d (of %d specimens)\n",
+              source, sum(ok_fog), sum(ok_bio), sum(ok_cwd), n))
   for (gy in sort(unique(samples$GermYear[ok_any]))) {
     idx_fog  <- which(samples$GermYear == gy & ok_fog)
     idx_bio  <- which(samples$GermYear == gy & ok_bio)
-    idx_all  <- union(idx_fog, idx_bio)
+    idx_cwd  <- which(samples$GermYear == gy & ok_cwd)
+    idx_all  <- union(union(idx_fog, idx_bio), idx_cwd)
     lats  <- samples$Lat[idx_all]; longs <- samples$Long[idx_all]
     win_years <- (gy - ROLL_WINDOW + 1):gy
-    cat(sprintf("    GermYear %d: window %d-%d (fog:%d specimen(s), bio:%d specimen(s))\n",
-                gy, min(win_years), max(win_years), length(idx_fog), length(idx_bio)))
-    fog_mat <- bio12_mat <- bio15_mat <- bio18_mat <-
+    cat(sprintf("    GermYear %d: window %d-%d (fog:%d, bio:%d, cwd:%d specimen(s))\n",
+                gy, min(win_years), max(win_years), length(idx_fog), length(idx_bio), length(idx_cwd)))
+    fog_mat <- bio12_mat <- bio15_mat <- bio18_mat <- cwd_mat <-
       matrix(NA_real_, nrow = length(idx_all), ncol = ROLL_WINDOW)
     for (i in seq_along(win_years)) {
       yr <- win_years[i]
@@ -1840,17 +1886,20 @@ compute_rolling_15 <- function(samples, source, fog_min, fog_max, bio_min, bio_m
       }
       pv <- extract_prism_year_13(yr, lats, longs)
       bio12_mat[, i] <- pv$BIO12; bio15_mat[, i] <- pv$BIO15; bio18_mat[, i] <- pv$BIO18
+      cwd_mat[, i] <- extract_cwd_annual_15(yr, lats, longs)
     }
     fog_means   <- safe_rowMeans(fog_mat)
     bio12_means <- safe_rowMeans(bio12_mat)
     bio15_means <- safe_rowMeans(bio15_mat)
     bio18_means <- safe_rowMeans(bio18_mat)
+    cwd_means   <- safe_rowMeans(cwd_mat)
     val_fog[idx_fog]     <- fog_means[match(idx_fog, idx_all)]
     val_bio12[idx_bio]   <- bio12_means[match(idx_bio, idx_all)]
     val_bio15[idx_bio]   <- bio15_means[match(idx_bio, idx_all)]
     val_bio18[idx_bio]   <- bio18_means[match(idx_bio, idx_all)]
+    val_cwd[idx_cwd]     <- cwd_means[match(idx_cwd, idx_all)]
   }
-  list(fog = val_fog, bio12 = val_bio12, bio15 = val_bio15, bio18 = val_bio18)
+  list(fog = val_fog, bio12 = val_bio12, bio15 = val_bio15, bio18 = val_bio18, cwd = val_cwd)
 }
 
 modern_fog_min   <- fog_year_min + ROLL_WINDOW - 1   # 2009
@@ -1861,26 +1910,38 @@ historic_fog_min <- min(kling_years_15) + ROLL_WINDOW - 1  # 1969 (20yr)
 historic_fog_max <- max(kling_years_15)                     # 2014
 historic_bio_min <- 1927 + ROLL_WINDOW - 1
 historic_bio_max <- prism_wy_last                           # 2024 (much wider than Kling)
+# CWD cache range -> same gate used for both modern and historic calls
+# (unlike fog, CWD has one shared cache, not a separate modern/historic
+# source), matching how BIO12/15/18's gate is already shared between them.
+cwd_gate_min <- if (length(cwd_cache_years) > 0) min(cwd_cache_years) + ROLL_WINDOW - 1 else Inf
+cwd_gate_max <- if (length(cwd_cache_years) > 0) max(cwd_cache_years) else -Inf
 
 cat("\n--- modern (fog/BIO12/15/18) ---\n")
 modern_vals <- compute_rolling_15(samples15, "modern", modern_fog_min, modern_fog_max,
-                                   modern_bio_min, modern_bio_max)
-cat("\n--- historic (Kling/BIO12/15/18) ---\n")
+                                   modern_bio_min, modern_bio_max, cwd_gate_min, cwd_gate_max)
+cat("\n--- historic (Kling/BIO12/15/18/CWD) ---\n")
 historic_vals <- compute_rolling_15(samples15, "historic", historic_fog_min, historic_fog_max,
-                                     historic_bio_min, historic_bio_max)
+                                     historic_bio_min, historic_bio_max, cwd_gate_min, cwd_gate_max)
 
 samples15$fog_modern   <- modern_vals$fog
 samples15$BIO12_modern <- modern_vals$bio12
 samples15$BIO15_modern <- modern_vals$bio15
 samples15$BIO18_modern <- modern_vals$bio18
+# Not adding a "CWD_modern" column here: the modern pipeline already has its
+# own established CWD_25yr (fixed WY2000-2025 mean, Section 12) -- this
+# rolling-window CWD value is computed above only because compute_rolling_15
+# is shared between the modern/historic calls, but only the historic side
+# (which had no CWD variable at all before) actually needs a new column.
 samples15$Kling_historic <- historic_vals$fog
 samples15$BIO12_historic <- historic_vals$bio12
 samples15$BIO15_historic <- historic_vals$bio15
 samples15$BIO18_historic <- historic_vals$bio18
+samples15$CWD_historic   <- historic_vals$cwd
 
-cat(sprintf("\nNon-NA counts: fog_modern=%d BIO18_modern=%d BIO15_modern=%d | Kling_historic=%d BIO18_historic=%d BIO15_historic=%d\n",
+cat(sprintf("\nNon-NA counts: fog_modern=%d BIO18_modern=%d BIO15_modern=%d | Kling_historic=%d BIO18_historic=%d BIO15_historic=%d CWD_historic=%d\n",
             sum(!is.na(samples15$fog_modern)), sum(!is.na(samples15$BIO18_modern)), sum(!is.na(samples15$BIO15_modern)),
-            sum(!is.na(samples15$Kling_historic)), sum(!is.na(samples15$BIO18_historic)), sum(!is.na(samples15$BIO15_historic))))
+            sum(!is.na(samples15$Kling_historic)), sum(!is.na(samples15$BIO18_historic)), sum(!is.na(samples15$BIO15_historic)),
+            sum(!is.na(samples15$CWD_historic))))
 
 # --- merge into emma_gee_results_final.csv (update existing rows by
 #     SampleID, add any genuinely new ones) ---
@@ -1889,7 +1950,8 @@ existing15 <- read.csv(output_file, stringsAsFactors = FALSE)
 existing15$SampleID <- trimws(as.character(existing15$SampleID))
 existing15$Fog_historic_spliced <- NULL  # drop stale column from the now-reverted splice attempt
 new_cols <- c("fog_modern", "BIO12_modern", "BIO15_modern", "BIO18_modern",
-              "Kling_historic", "BIO12_historic", "BIO15_historic", "BIO18_historic")
+              "Kling_historic", "BIO12_historic", "BIO15_historic", "BIO18_historic",
+              "CWD_historic")
 for (col in new_cols) existing15[[col]] <- NA_real_
 
 match_idx15 <- match(samples15$SampleID, existing15$SampleID)

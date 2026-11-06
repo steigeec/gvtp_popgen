@@ -324,6 +324,48 @@ jpeg(sprintf("%s/ohana_K%d.jpg", LOCALITY, display_k), width=4000, height=1000)
 print(get(paste0("P", display_k)) + theme(axis.text=element_text(size=30)))
 dev.off()
 
+# Experimental variant (2026-10-22, per user request): same K=6 data, but
+# split into one panel per stand (OHANA_order) instead of one continuous
+# bar, with very little space between panels. Stands numbered 1-9 in the
+# same order as the inbreeding/nucleotide-diversity boxplots (72,73,75,
+# 78,80,85,87,89,88); 79 is folded into the same panel as 78 ("4") rather
+# than getting its own, per user decision. Written to a separate file
+# (not replacing ohana_K6.jpg) since this is an experiment, not a
+# replacement for the original.
+stand_labels_k6 <- c("72"="1", "73"="2", "75"="3", "78"="4", "79"="4",
+                      "80"="5", "85"="6", "87"="7", "89"="8", "88"="9")
+dl6 <- get(paste0("data_long_", display_k))
+dl6$stand_label <- factor(stand_labels_k6[as.character(dl6$OHANA_order)], levels=as.character(1:9))
+cols6 <- color_state[[as.character(display_k)]]$colors
+cols6[cols6 == "#FFAABB"] <- "#DDDDDD"
+
+p_ohana_k6_bystand <- ggplot(data=dl6, aes(x=as.factor(index), y=as.numeric(Percentage), fill=Cluster)) +
+  geom_bar(stat="identity", color=NA, width=1) +   # no bar outlines (panel borders kept)
+  scale_fill_manual("", values=cols6) +
+  scale_y_continuous(name="Ancestry composition", expand=c(0,0), breaks=seq(0,1,.2)) +
+  # facet_grid (not facet_wrap) specifically so space="free_x" can size each
+  # panel's width by its own number of individuals -- facet_wrap always
+  # gives every panel equal width regardless of scales="free_x", which
+  # crushed stand 88 (397 of 736 individuals) into a sliver so thin its
+  # bars' black outlines blotted out the fill entirely.
+  facet_grid(~stand_label, scales="free_x", space="free_x", switch="x") +
+  gvtp_theme +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_text(size=55, angle=90),
+        legend.position="none",
+        panel.spacing=unit(4, "pt"),
+        panel.border=element_rect(color="black", fill=NA, linewidth=1),
+        strip.background=element_rect(fill="grey85", color="black"),
+        strip.placement="outside",
+        strip.text=element_text(size=55, margin=margin(t=8, b=8)))
+
+jpeg(sprintf("%s/ohana_K%d_bystand.jpg", LOCALITY, display_k), width=2200, height=790)
+print(p_ohana_k6_bystand)
+dev.off()
+
 
 # Pie chart on the contour map, for K=6 (fixed; see display_k above)
 best_dat <- get(paste0("data_", display_k))

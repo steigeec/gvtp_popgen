@@ -194,6 +194,13 @@ if (is_year1) {
   color_scale <- scale_fill_manual(values=color_map, breaks=ohana_vals)
 }
 
+if (is_year1) {
+  # geom_point draws points in row order, so put Dangermond last to render
+  # it on top of the other clusters -- it has very few samples and is easy
+  # to lose under a larger cluster's overplotted points otherwise.
+  data2 <- data2[order(data2$Clusters == "Dangermond"), ]
+}
+
 # --- Helper to make a PCA plot ---
 make_pca_plot <- function(pc_x, pc_y, ve_x, ve_y) {
   ggplot(data2, aes(x=.data[[pc_x]], y=.data[[pc_y]], fill=color_var)) +

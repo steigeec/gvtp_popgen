@@ -2,8 +2,6 @@
 
 #SBATCH --job-name=gemma_lmm
 #SBATCH --partition=long
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=16gb

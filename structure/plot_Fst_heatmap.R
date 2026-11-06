@@ -1,18 +1,20 @@
 #!/usr/bin/env Rscript
 
-## Pairwise population Fst heatmap (lower triangle only), sized for a small
-## printed inset (~1x1 inch). Populations are marked by a colored dot along
-## each axis (instead of text labels) to keep the grid legible at that scale.
+## Pairwise population Fst heatmap (lower triangle), sized for a ~1 x 1 inch
+## inset. Populations are marked by coloured dots on the axes, not text labels.
+## Dangermond cells are hatched because low coverage inflates its Fst
+## (see mantel_IBD.R).
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs/")
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
+.libPaths(file.path(BASE_DIR, "software/R_libs/"))
 library(ggplot2)
 
-fst_file <- "/private/groups/meyerlab/esteiger/structure/Fst/populations/pairwise_auto/pairwise_Fst_populations.txt"
-out_stem <- "/private/groups/meyerlab/esteiger/gvtp_popgen/structure/Fst_heatmap_populations"
+fst_file <- file.path(BASE_DIR, "structure/Fst/populations/pairwise_auto/pairwise_Fst_populations.txt")
+out_stem <- file.path(BASE_DIR, "structure/Fst/populations/Fst_heatmap_populations")
 
 fst_stat <- "Fst_weighted"   # switch to "Fst_unweighted" to plot the other estimator
 
-# Pipeline population names (used in the Fst table) -> cluster names
+# Fst table population names to cluster names
 name_map <- c(
   conception = "Point_Conception",
   cdfw       = "CDFW",
@@ -49,8 +51,7 @@ for (i in seq_len(nrow(fst_df))) {
   mat[p2, p1] <- fst_df[[fst_stat]][i]
 }
 
-# Numeric grid positions: col_i/row_i = 1..n in cluster_levels order.
-# y is flipped (n+1-row_i) so the first population sits at the top.
+# Grid positions in cluster_levels order; y flipped so the first population is at the top.
 plot_df <- expand.grid(row = cluster_levels, col = cluster_levels, stringsAsFactors = FALSE)
 plot_df$col_i <- match(plot_df$col, cluster_levels)
 plot_df$row_i <- match(plot_df$row, cluster_levels)
@@ -59,9 +60,8 @@ plot_df$fst <- mapply(function(r, c) mat[r, c], plot_df$row, plot_df$col)
 plot_df$x <- plot_df$col_i
 plot_df$y <- n + 1 - plot_df$row_i
 
-# Axis dot strips: one dot per population that actually appears as a column /
-# row in the lower triangle (drops CDFW from the x-axis and Lion's Head from
-# the y-axis, since neither has any cells there).
+# Axis dots only for populations with cells in the lower triangle
+# (no CDFW on x, no Lion's Head on y).
 cols_used <- sort(unique(plot_df$col_i))
 rows_used <- sort(unique(plot_df$row_i))
 col_dots <- data.frame(x = cols_used, y = 0, pop = cluster_levels[cols_used])
@@ -69,20 +69,31 @@ row_dots <- data.frame(x = 0, y = n + 1 - rows_used, pop = cluster_levels[rows_u
 col_dots$col <- popcolors[col_dots$pop]
 row_dots$col <- popcolors[row_dots$pop]
 
+# Hatch lines clipped to each tile, since ggplot2 has no pattern fill.
+HATCH_POP <- "Dangermond"
+HATCH_SPACING <- 0.25
+hatch_cells <- plot_df[plot_df$row == HATCH_POP | plot_df$col == HATCH_POP, ]
+hatch_df <- do.call(rbind, lapply(seq_len(nrow(hatch_cells)), function(i) {
+  cx <- hatch_cells$x[i]; cy <- hatch_cells$y[i]
+  # lines y - cy = (x - cx) - k across the tile [-0.5, 0.5]^2
+  k <- seq(-1 + HATCH_SPACING, 1 - HATCH_SPACING, by = HATCH_SPACING)
+  data.frame(x = cx + pmax(-0.5, -0.5 + k), xend = cx + pmin(0.5, 0.5 + k),
+             y = cy + pmax(-0.5, -0.5 + k) - k, yend = cy + pmin(0.5, 0.5 + k) - k)
+}))
+
 fmt_fst <- function(x) sub("^0\\.", ".", sprintf("%.2f", x))   # ".05" not "0.05"
 
-# White text on dark (high-Fst) tiles, black text on light tiles, so labels
-# stay legible across the whole white-to-black gradient. Passed as a fixed
-# vector (not via aes()) so it doesn't collide with the dots' colour scale.
+# White labels on dark tiles. Passed outside aes() so it doesn't clash with
+# the dots' colour scale.
 mid <- mean(range(plot_df$fst))
 plot_df$text_col <- ifelse(plot_df$fst > mid, "white", "black")
 
-# Dot fill/outline colours are passed as fixed vectors (not through aes()) so
-# they don't collide with the tiles' "fill" scale (continuous grey gradient).
-# shape 21 gives a thin black outline around each dot -- needed since the
-# palette's yellow (Lion's Head) is otherwise hard to see on white.
+# Dot colours also passed outside aes(), to keep them off the tile fill scale.
+# Shape 21 adds a black outline so the yellow dot shows on white.
 p <- ggplot() +
   geom_tile(data = plot_df, aes(x = x, y = y, fill = fst), color = "black", linewidth = 0.08) +
+  geom_segment(data = hatch_df, aes(x = x, y = y, xend = xend, yend = yend),
+               colour = "grey55", linewidth = 0.12) +
   geom_text(data = plot_df, aes(x = x, y = y, label = fmt_fst(fst)),
             colour = plot_df$text_col, size = 1.1) +
   geom_point(data = col_dots, aes(x = x, y = y),
@@ -95,8 +106,7 @@ p <- ggplot() +
   theme(plot.background = element_rect(fill = "white", colour = NA),
         panel.background = element_rect(fill = "white", colour = NA))
 
-# PDF (vector) is the primary output -- text stays crisp at 1x1"; the PNG is a
-# quick-look raster at high dpi so small text doesn't blur.
+# PDF is the main output; PNG at 600 dpi for quick viewing.
 ggsave(paste0(out_stem, ".pdf"), p, width = 1, height = 1, units = "in", bg = "white")
 ggsave(paste0(out_stem, ".png"), p, width = 1, height = 1, units = "in", dpi = 600, bg = "white")
 

@@ -2,8 +2,6 @@
 
 #SBATCH --job-name=ngsLD
 #SBATCH --partition=long    
-#SBATCH --mail-type=BEGIN,END,FAIL          
-#SBATCH --mail-user=esteiger@ucsc.edu 
 #SBATCH --nodes=1    	
 #SBATCH --cpus-per-task=120                 # 10 threads, 30 jobs
 #SBATCH --mem=100gb                    # 5gb per job * 

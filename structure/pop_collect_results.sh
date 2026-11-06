@@ -4,8 +4,6 @@
 
 #SBATCH --job-name=popFst_collect
 #SBATCH --partition=short
-#SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --ntasks=1
 #SBATCH --mem=4gb
 #SBATCH --time=1:00:00

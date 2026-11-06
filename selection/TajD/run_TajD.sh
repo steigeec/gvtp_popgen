@@ -1,7 +1,5 @@
 #!/bin/bash
 #SBATCH --partition=long
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --nodes=1
 #SBATCH --time=168:00:00
 

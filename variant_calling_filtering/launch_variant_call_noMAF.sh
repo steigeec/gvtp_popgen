@@ -2,8 +2,6 @@
 
 #SBATCH --job-name=angsd_TajD_snps
 #SBATCH --partition=long
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --nodes=1
 #SBATCH --ntasks=18
 #SBATCH --mem=200gb

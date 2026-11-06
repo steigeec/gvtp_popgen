@@ -24,14 +24,30 @@
 #   lower (8 cores/task) to keep the cluster footprint reasonable.  A sample
 #   that genuinely needs longer than 3 days will TIMEOUT and restart from
 #   scratch on the next re-run of this script (ROHan has no checkpointing).
-# Phase 2 (rohan_phase2.sh): HMM ROH calling (--hmm), fast (~minutes). Each
-#   phase 2 array task depends only on its OWN phase 1 counterpart via SLURM's
-#   `aftercorr` dependency — NOT on the whole phase 1 array finishing — so
-#   samples that finish phase 1 early get their phase 2 immediately rather
-#   than waiting on the slowest straggler.  A phase 2 task whose phase 1
-#   counterpart times out or fails simply never runs (DependencyNeverSatisfied)
-#   and gets cancelled; that sample is picked up again on the next re-run of
-#   this script once phase 1 succeeds for it.
+# Phase 2 (rohan_phase2.sh): HMM ROH calling (--hmm), fast (~minutes).
+#   Submitted with NO dependency on phase 1 — an earlier version used
+#   --dependency=aftercorr:<phase1 jobid> so each task would wait on its own
+#   phase-1 counterpart, but this proved UNRELIABLE at this array size: most
+#   elements never left "Dependency" state even days after their phase-1
+#   counterpart completed successfully (confirmed via `scontrol show job`,
+#   2026-09-09 — only a handful of low array indices ever actually fired).
+#   Instead rohan_phase2.sh self-validates (checks its sample's hEst.gz with
+#   gzip -t) and exits 0 cleanly if phase 1 isn't done yet — safe to submit
+#   broadly; stragglers just get picked up on the next re-run of this script.
+#
+# *** SAFETY WARNING about re-running this script ***
+#   rohan_phase1.sh self-skips (exits 0) if its sample already has a VALID
+#   hEst.gz — safe to resubmit broadly for already-finished samples. But a
+#   sample whose phase 1 task is CURRENTLY RUNNING (mid-MCMC, hEst.gz not
+#   written yet) has no such protection: a second phase-1 task for that same
+#   sample would start writing to the same output prefix concurrently, risking
+#   real corruption. Don't re-run this script (which resubmits BOTH phases)
+#   while a previous phase-1 array still has RUNNING tasks — check
+#   `squeue -u $USER` first. If you just want to pick up newly-finished phase-1
+#   samples into phase 2 without touching phase 1 at all, submit phase 2 alone:
+#     n=$(wc -l < rohan_tasks.tsv); sbatch --array=1-${n}%40 rohan_phase2.sh
+#   (using the SAME rohan_tasks.tsv the active phase1 array was submitted
+#   with, so array indices still line up — don't rebuild the task list first).
 #
 # Also gzips each completed sample's ${prefix}.log the first time it's seen
 # done — nothing reads that file's content, and it's almost entirely repeated
@@ -104,8 +120,8 @@ echo "Submitting phase 1 (MCMC) array: $n_remaining tasks, ${MAX_CONCURRENT_P1} 
 P1=$(sbatch --parsable --array=1-${n_remaining}%${MAX_CONCURRENT_P1} "$SCRIPT_DIR/rohan_phase1.sh")
 echo "  Phase 1 job ID: $P1"
 
-echo "Submitting phase 2 (HMM) array: aftercorr on phase 1 (per-sample, not array-wide), ${MAX_CONCURRENT_P2} concurrent max"
-P2=$(sbatch --parsable --dependency=aftercorr:"$P1" --array=1-${n_remaining}%${MAX_CONCURRENT_P2} "$SCRIPT_DIR/rohan_phase2.sh")
+echo "Submitting phase 2 (HMM) array: no dependency (self-validates hEst.gz — see header note), ${MAX_CONCURRENT_P2} concurrent max"
+P2=$(sbatch --parsable --array=1-${n_remaining}%${MAX_CONCURRENT_P2} "$SCRIPT_DIR/rohan_phase2.sh")
 echo "  Phase 2 job ID: $P2"
 
 echo ""

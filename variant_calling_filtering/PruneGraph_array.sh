@@ -2,8 +2,6 @@
 
 #SBATCH --job-name=PruneGraph
 #SBATCH --partition=long
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --cpus-per-task=40
 #SBATCH --output=logs/PruneGraph_%A_%a.log
 

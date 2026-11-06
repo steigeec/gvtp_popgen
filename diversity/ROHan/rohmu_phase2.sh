@@ -25,8 +25,6 @@
 
 #SBATCH --job-name=rohmu_p2
 #SBATCH --partition=long
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --nodes=1
 #SBATCH --ntasks=10
 #SBATCH --mem=50gb

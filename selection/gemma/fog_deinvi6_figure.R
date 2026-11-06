@@ -1,21 +1,24 @@
 #!/usr/bin/env Rscript
 
-# Two-panel greyscale figure for the DEINVI_00006 putative inversion peak,
-# for any variable whose outliers overlap it:
+# Two-panel greyscale figure for the DEINVI_00006 fog outlier peak
+# (19 SNPs, 49,031,257-49,146,391; GNS1/SNF1, ~0.6 Mb from the chr 6
+# centromere -- not an inversion):
 #   Left  – variable's germination-year values by germination cohort
 #   Right – mean favorable-allele dosage at the DEINVI_00006 peak
-# Plus a 3-panel map figure: Strauss-population haplotype frequency
-# (standard vs. inverted, as a black/white pie) over a Tranquillon
-# Mountain contour/hillshade basemap, one panel per sampling year.
+# Plus a 3-panel map figure: per-stand frequency of the fog-favorable allele
+# at the peak (black slice; favorable = allele whose coverage-adjusted dosage
+# rises with long-term fog across all samples), one equal-sized pie per
+# stand, over a Tranquillon Mountain contour basemap, one panel per
+# germination year.
 #
 # Currently run for fog only — of BIO15/BIO18/fog, fog is the only variable
-# whose 40000_3 outliers still include a peak inside the inversion (43-50Mb
+# whose 40000_3 outliers still include a peak in the chr 6 pericentromeric block (43-50Mb
 # on DEINVI_00006); BIO18 never overlapped it, and BIO15's peak there
 # (previously 66 SNPs @ 48860682-49175215) dropped out of its outlier set
 # entirely as of the 2026-07-20 outlier re-call — its only chr6 outlier
-# peak now sits at ~3.44Mb, unrelated to this inversion. Re-add BIO15 to
+# peak now sits at ~3.44Mb, unrelated to this peak. Re-add BIO15 to
 # VAR_CONFIG below if a future outlier re-call brings back a peak near
-# TARGET_START.
+# PEAK_SPAN.
 #
 # The map figure is Strauss-only: it's the one site sampled across all
 # three years (2020/2021/2022); the other six sites in env_var.txt were
@@ -61,12 +64,11 @@ args <- commandArgs(trailingOnly = TRUE)
 var_names <- if (length(args) >= 1) args else names(VAR_CONFIG)
 
 # ── Build the Tranquillon Mountain basemap once (shared across variables) ────
-# CRS comes straight off the DEM's own header (UTM zone 10 / NAD27) rather
-# than being hardcoded, then reprojected to lon/lat to line up with the
-# Lat/Long columns in env_var.txt. Contour lines only (no hillshade raster).
+# Drawn in the DEM's own CRS (UTM zone 10 / NAD27, read from its header), so
+# map units are metres and the pies are circles; stand positions (Lat/Long in
+# env_var.txt) are projected into it. Contour lines only (no hillshade raster).
 dem    <- rast(dem_file)
-dem_ll <- project(dem, "EPSG:4326")
-contour_sf <- st_as_sf(as.contour(dem_ll, nlevels = 15))
+contour_sf <- st_as_sf(as.contour(dem, nlevels = 15))
 
 # OHANA_order (stand-of-plants grouping) lives in field_data.txt, not
 # env_var.txt — join it in by SampleID.
@@ -75,9 +77,9 @@ field_dt$SampleID <- as.character(field_dt$SampleID)
 
 # Zoomed to the Strauss individuals themselves (range of their Lat/Long,
 # +buffer) rather than the full DEM extent.
-STRAUSS_BUFFER <- 0.003   # degrees
-PIE_RADIUS     <- 0.0007  # degrees; one pie per OHANA_order stand
-JITTER_RANGE   <- 0.0004  # degrees; tiny offset so co-located stands separate
+STRAUSS_BUFFER <- 300     # m
+PIE_RADIUS     <- 150     # m; one equal-sized pie per OHANA_order stand
+JITTER_RANGE   <- 40      # m; tiny offset so co-located stands separate
 
 make_map_panel <- function(stand_df, yr, map_xlim, map_ylim) {
   row <- stand_df[stand_df$Year == yr, ]
@@ -85,10 +87,12 @@ make_map_panel <- function(stand_df, yr, map_xlim, map_ylim) {
   ggplot() +
     geom_sf(data = contour_sf, color = "grey40", linewidth = 0.15,
             alpha = 0.7, inherit.aes = FALSE) +
-    geom_scatterpie(data = row, aes(x = Long, y = Lat, r = r),
-                     cols = c("standard", "inverted"), color = "black",
+    geom_scatterpie(data = row, aes(x = X, y = Y, r = r),
+                     cols = c("other", "favorable"), color = "black",
                      linewidth = 0.1, alpha = 0.85) +
-    scale_fill_manual(values = c(standard = "white", inverted = "black")) +
+    scale_fill_manual(values = c(other = "white", favorable = "black"),
+                      breaks = c("favorable", "other"),
+                      labels = c("fog-favorable allele", "other allele"), name = NULL) +
     annotation_scale(location = "bl", width_hint = 0.25, style = "ticks",
                       line_width = 1, height = unit(0.15, "cm"),
                       text_cex = 0.7, pad_x = unit(0.3, "cm"),
@@ -108,9 +112,8 @@ smap     <- unique(smap)
 chr6_num <- smap$chr_num[smap$chr_name == "DEINVI_00006"][1]
 cat("DEINVI_00006 = internal chr", chr6_num, "\n")
 
-# Select peak by position: the 69-SNP fog peak / 66-SNP BIO15 peak both
-# start at ~48,86x,xxx (not the adjacent, smaller peak just below it).
-TARGET_START <- 48864379L
+# Select the peak by its span (the 19-SNP fog peak, GNS1/SNF1)
+PEAK_SPAN <- c(49031257L, 49146391L)
 
 for (var_name in var_names) {
   cfg <- VAR_CONFIG[[var_name]]
@@ -147,7 +150,8 @@ for (var_name in var_names) {
   }
 
   chr6_snps   <- snp_info[snp_info$chr == chr6_num, ]
-  pk_at_target <- chr6_snps$peak[which.min(abs(chr6_snps$pos - TARGET_START))]
+  pk_at_target <- unique(chr6_snps$peak[chr6_snps$pos >= PEAK_SPAN[1] & chr6_snps$pos <= PEAK_SPAN[2]])
+  stopifnot(length(pk_at_target) == 1)
   target_info  <- snp_info[snp_info$peak == pk_at_target, ]
   cat("Target peak:", pk_at_target, "on chr", chr6_num,
       "—", nrow(target_info), "SNPs, pos",
@@ -163,6 +167,13 @@ for (var_name in var_names) {
   # ── Read environmental data ───────────────────────────────────────────────
   env         <- fread(env_file, header = TRUE, sep = "\t")
   env$SampleID <- as.character(env$SampleID)
+  # 13 individuals have untrustworthy coordinates (Location="Strauss" but
+  # Clusters assigned to Point_Conception/VAFB_Lion_Head; see
+  # gvtp_popgen/wind/wind_aem_rda_hybrid.R) -- excluded throughout, including
+  # from allele polarization
+  BAD_COORD_IDS <- c("4548", "4549", "4550", "4551", "4552", "4553", "4554",
+                     "4555", "4556", "4557", "4559", "4561", "4562")
+  env         <- env[!env$SampleID %in% BAD_COORD_IDS, ]
   env_match   <- match(rownames(dosage), env$SampleID)
   matched     <- !is.na(env_match)
   dosage      <- dosage[matched, , drop = FALSE]
@@ -200,6 +211,11 @@ for (var_name in var_names) {
   pk_score  <- rowMeans(strauss_dosage[, pk_cols, drop = FALSE], na.rm = TRUE)
   df$pk_score <- pk_score
 
+  # Plot-ready data for the stacked chr 6 figure
+  # (gvtp_popgen/inversion/DEINVI_0006_stacked.py, panels I and J)
+  fwrite(data.frame(SampleID = env_matched$SampleID[strauss_idx], df),
+         file.path(out_dir, paste0(var_name, "_deinvi6_by_year.tsv")), sep = "\t")
+
   # ── Panel A: variable's germination-year values by year ─────────────────────
   p_env <- ggplot(df, aes(x = Year, y = germ_env)) +
     geom_boxplot(fill = box_fill, outlier.shape = NA, color = "black", width = 0.6) +
@@ -213,7 +229,7 @@ for (var_name in var_names) {
     geom_boxplot(fill = box_fill, outlier.shape = NA, color = "black", width = 0.6) +
     geom_jitter(width = 0.15, alpha = 0.25, size = 1.6, color = "black") +
     labs(x = "Germination year",
-         y = "Mean favorable allele dosage\nat putative inversion") +
+         y = "Mean favorable allele dosage\nat fog outlier peak") +
     base_theme
 
   # ── Combine and save ──────────────────────────────────────────────────────────
@@ -231,8 +247,8 @@ for (var_name in var_names) {
   # classes at this locus.
   geno_df <- df %>%
     mutate(genotype = factor(round(pk_score), levels = c(0, 1, 2),
-                              labels = c("Standard/Standard", "Heterozygous",
-                                         "Inverted/Inverted"))) %>%
+                              labels = c("Other/Other", "Heterozygous",
+                                         "Favorable/Favorable"))) %>%
     count(Year, genotype, .drop = FALSE) %>%
     group_by(Year) %>%
     mutate(prop = n / sum(n)) %>%
@@ -240,9 +256,9 @@ for (var_name in var_names) {
 
   p_geno <- ggplot(geno_df, aes(x = Year, y = prop, fill = genotype)) +
     geom_col(color = "black", width = 0.6, position = position_dodge2(padding = 0.1)) +
-    scale_fill_manual(values = c("Standard/Standard" = "white",
+    scale_fill_manual(values = c("Other/Other" = "white",
                                   "Heterozygous"      = "grey50",
-                                  "Inverted/Inverted" = "black")) +
+                                  "Favorable/Favorable" = "black")) +
     labs(x = "Germination year", y = "Genotype proportion") +
     base_theme
 
@@ -252,12 +268,11 @@ for (var_name in var_names) {
   ggsave(geno_out_path, combined_geno, width = 5, height = 8, dpi = 200)
   cat("Saved:", geno_out_path, "\n")
 
-  # ── 3-panel map: per-OHANA_order-stand haplotype frequency by year, on
-  # the DEM basemap, zoomed to Strauss ──────────────────────────────────────
-  # Each stand gets its own pie: "haplotype frequency" here is a 2-slice
-  # allele frequency averaged across the stand's individuals: inverted =
-  # mean(pk_score) / 2 (dosage is 0/1/2 copies of the favorable allele,
-  # already polarized above per individual), standard = 1 - inverted.
+  # ── 3-panel map: per-OHANA_order-stand fog-favorable allele frequency at
+  # the peak by year, on the DEM basemap, zoomed to Strauss ────────────────
+  # Each stand gets its own pie: favorable = mean(pk_score) / 2 (dosage is
+  # 0/1/2 copies of the fog-favorable allele, polarized above), other =
+  # 1 - favorable. Stands come from field_data.txt (merged/corrected).
   indiv_df <- df
   indiv_df$Lat         <- env_matched$Lat[strauss_idx]
   indiv_df$Long        <- env_matched$Long[strauss_idx]
@@ -267,15 +282,17 @@ for (var_name in var_names) {
   stand_df <- indiv_df %>%
     group_by(Year, OHANA_order) %>%
     summarise(Lat = mean(Lat), Long = mean(Long),
-              inverted = mean(pk_score) / 2, n = n(), .groups = "drop") %>%
-    mutate(standard = 1 - inverted)
-  cat("\n--- DEINVI_00006 haplotype frequency by stand/year (", var_name, ") ---\n")
+              favorable = mean(pk_score) / 2, n = n(), .groups = "drop") %>%
+    mutate(other = 1 - favorable)
+  cat("\n--- DEINVI_00006 fog-favorable allele frequency by stand/year (", var_name, ") ---\n")
   print(stand_df)
 
   # Same small jitter per stand across all three years, so a stand doesn't
   # jump around panel-to-panel — just nudged enough to separate stands that
   # would otherwise plot on top of each other.
   set.seed(1)
+  xy <- st_coordinates(st_transform(st_as_sf(stand_df, coords = c("Long", "Lat"), crs = 4326), crs(dem)))
+  stand_df$X <- xy[, 1]; stand_df$Y <- xy[, 2]
   jitter_tbl <- data.frame(
     OHANA_order = unique(stand_df$OHANA_order),
     dLat  = runif(length(unique(stand_df$OHANA_order)), -JITTER_RANGE, JITTER_RANGE),
@@ -283,14 +300,20 @@ for (var_name in var_names) {
   )
   stand_df <- stand_df %>%
     left_join(jitter_tbl, by = "OHANA_order") %>%
-    mutate(Lat = Lat + dLat, Long = Long + dLong)
+    mutate(Y = Y + dLat, X = X + dLong)
 
-  map_xlim <- range(stand_df$Long) + c(-1, 1) * STRAUSS_BUFFER
-  map_ylim <- range(stand_df$Lat)  + c(-1, 1) * STRAUSS_BUFFER
+  map_xlim <- range(stand_df$X) + c(-1, 1) * STRAUSS_BUFFER
+  map_ylim <- range(stand_df$Y) + c(-1, 1) * STRAUSS_BUFFER
 
   map_panels <- lapply(levels(df$Year), make_map_panel,
                         stand_df = stand_df, map_xlim = map_xlim, map_ylim = map_ylim)
-  map_combined <- plot_grid(plotlist = map_panels, nrow = 1)
+  map_legend <- get_plot_component(
+    map_panels[[1]] + theme(legend.position = "bottom", legend.direction = "horizontal",
+                             legend.text = element_text(size = 16, margin = margin(l = 6, r = 24)),
+                             legend.key.spacing.x = unit(0.4, "cm")),
+    "guide-box-bottom", return_all = TRUE)
+  map_combined <- plot_grid(plot_grid(plotlist = map_panels, nrow = 1), map_legend,
+                            ncol = 1, rel_heights = c(1, 0.08))
 
   map_out_path <- file.path(out_dir, paste0(var_name, "_deinvi6_map3panel.jpg"))
   ggsave(map_out_path, map_combined, width = 11.14, height = 5, dpi = 200)
@@ -306,7 +329,7 @@ for (var_name in var_names) {
 
   cat("\n--- DEINVI_00006 genotype distribution by Year (", var_name, ") ---\n")
   genotype <- factor(round(df$pk_score), levels = c(0, 1, 2),
-                      labels = c("Standard/Standard", "Heterozygous", "Inverted/Inverted"))
+                      labels = c("Other/Other", "Heterozygous", "Favorable/Favorable"))
   geno_tab <- table(Year = df$Year, Genotype = genotype)
   print(geno_tab)
   cat("\nProportions:\n")

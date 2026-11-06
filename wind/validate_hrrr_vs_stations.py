@@ -1,35 +1,30 @@
 #!/private/home/esteiger/miniconda3/envs/herbie/bin/python3
 """
-Validate raw HRRR wind (the input to the WindNinja downscaling test) against
-real station observations sitting inside the HRRR download bbox, across the
-whole bloom-season climatology sample (2022-2024, Jun-Sep, 6-hourly
-00/06/12/18 UTC -- same timesteps as download_hrrr_wind.py).
+Compare raw HRRR wind (earth-relative) at the nearest grid cell to each
+station against the station observations, over all bloom-season timesteps
+from download_hrrr_wind.py.
 
-Prompted by a single-timestep spot check (2022-07-01 00 UTC) at the
-Point_Conception population site that showed raw HRRR badly disagreeing with
-the PTGC1 buoy (5.7 m/s from 288 vs 11.4 m/s from 354) -- but that check
-mistakenly used PTGC1 (actually at Point Arguello, 18.7 km from
-Point_Conception) as if it were co-located. This script instead compares each
-station against HRRR's OWN nearest grid cell to that station's own
-coordinates -- an honest same-point check -- across every matching timestep,
-not just one.
+Stations (coordinates as in download_station_wind.sh):
+  PTGC1 (34.577, -120.648)   NDBC C-MAN, Point Arguello
+  VGN   (34.8495, -120.5996) Vandenberg SFB North ASOS
+  TQS   (34.636, -120.6161)  Vandenberg SFB South ASOS
+Only PTGC1 has observations before 2023.
 
-Station coordinates and nearest-population mapping are from
-download_station_wind.sh's header:
-  PTGC1 (34.577, -120.648)   - NDBC C-MAN at Point Arguello. Discontinued
-                               2023-02-14, so only the 2022 bloom season has
-                               PTGC1 data among 2022-2024.
-  VGN   (34.8495, -120.5996) - Vandenberg SFB North ASOS, still active.
-  TQS   (34.636, -120.6161)  - Vandenberg SFB South ASOS, still active.
-  SBA   (34.4261, -119.8436) - outside the HRRR download bbox
-                               (lon > -120.05), excluded.
+Input:  BASE_DIR/wind/hrrr/hrrr_wind_raw_points_earth.csv,
+        BASE_DIR/wind/station_wind_obs.csv (PTGC1),
+        BASE_DIR/wind/station_obs/{VGN,TQS}_asos_2000_2024.csv
+Output: BASE_DIR/wind/hrrr/validate_{station}_matched.csv,
+        BASE_DIR/wind/hrrr_vs_station_validation_summary.csv
+Env:    'herbie' conda env
+Usage:  /private/home/esteiger/miniconda3/envs/herbie/bin/python3 validate_hrrr_vs_stations.py
 """
 
 import numpy as np
 import pandas as pd
 
-WIND_DIR = "/private/groups/meyerlab/esteiger/wind"
-HRRR_CSV = f"{WIND_DIR}/hrrr/hrrr_wind_raw_points.csv"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+WIND_DIR = f"{BASE_DIR}/wind"
+HRRR_CSV = f"{WIND_DIR}/hrrr/hrrr_wind_raw_points_earth.csv"
 PTGC1_CSV = f"{WIND_DIR}/station_wind_obs.csv"
 
 STATIONS = {
@@ -42,7 +37,7 @@ TIME_TOL = pd.Timedelta("35min")  # ASOS obs land near :55, not on the hour
 
 
 def to_from_direction(u, v):
-    """Meteorological 'direction wind is blowing FROM', compass degrees."""
+    """Meteorological direction the wind blows from, in compass degrees."""
     return (np.degrees(np.arctan2(-u, -v))) % 360
 
 
@@ -58,13 +53,12 @@ def load_hrrr():
 
 
 def nearest_cell_series(hrrr, lat, lon):
-    """HRRR grid is fixed across time; find the nearest cell once, then
-    pull that cell's full time series."""
+    """Time series of the HRRR cell nearest to (lat, lon)."""
     first_t = hrrr["datetime"].iloc[0]
     snap = hrrr[hrrr["datetime"] == first_t]
     d = np.hypot(snap["lat"] - lat, snap["lon180"] - lon)
     cell_lat, cell_lon = snap.loc[d.idxmin(), ["lat", "lon180"]]
-    dist_km = d.min() * 111.0  # rough deg->km at this latitude
+    dist_km = d.min() * 111.0  # rough degrees to km at this latitude
     sub = hrrr[(hrrr["lat"] == cell_lat) & (hrrr["lon180"] == cell_lon)].copy()
     sub["speed_hrrr"] = np.hypot(sub["u10"], sub["v10"])
     sub["dir_hrrr"] = to_from_direction(sub["u10"], sub["v10"])
@@ -112,7 +106,7 @@ def summarize(name, dist_km, m):
     dir_mae = circular_abs_error(m_dir["dir_obs"], m_dir["dir_hrrr"]).mean()
     dir_median = circular_abs_error(m_dir["dir_obs"], m_dir["dir_hrrr"]).median()
 
-    # vector correlation: decompose obs & model into u/v, correlate each
+    # vector correlation: mean of the u and v correlations
     u_obs = -m_dir["speed_obs"] * np.sin(np.radians(m_dir["dir_obs"]))
     v_obs = -m_dir["speed_obs"] * np.cos(np.radians(m_dir["dir_obs"]))
     u_hrrr = -m_dir["speed_hrrr"] * np.sin(np.radians(m_dir["dir_hrrr"]))

@@ -525,4 +525,29 @@ if (!is.null(inv_chr)) {
   }
 }
 
+# ── Plot-ready per-scaffold data for the stacked inversion figures ─────────
+# (gvtp_popgen/inversion/DEINVI_0006_stacked.py), so they draw exactly the
+# same SNPs, threshold, and labels as the per-scaffold Manhattan plot above.
+# Peak-filtered: non-outliers plus only the Bonferroni SNPs retained in
+# 40000_3 peaks (isolated Bonferroni hits dropped, as in the whole-genome
+# plot), but without the whole-genome plot's random 50% thinning.
+EXPORT_SCAFFOLDS <- c("DEINVI_00003", "DEINVI_00006", "DEINVI_00008", "DEINVI_00017")
+fai_all <- read.table("/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked.fai",
+                      header = FALSE, stringsAsFactors = FALSE)[, 1:2]
+retained_df <- as.data.frame(retained)
+for (scaf in EXPORT_SCAFFOLDS) {
+  if (!scaf %in% names(scaf2chr)) next
+  chr  <- scaf2chr[[scaf]]
+  snps <- data[as.character(data$Chromosome) == chr, ]
+  ret  <- retained_df[as.character(retained_df$Chromosome) == chr, ]
+  keep <- snps$out == "no" | snps$Position %in% ret$Position
+  fwrite(data.table(Position = snps$Position[keep], p_final = snps$p_final[keep],
+                    thresh_bonf = thresh_bonf, scaf_len = fai_all$V2[fai_all$V1 == scaf]),
+         file.path(var_name, paste0("manhattan_", scaf, "_", var_name, ".tsv.gz")), sep = "\t")
+  scaf_labels <- if (nrow(labels) > 0) labels[as.character(labels$Chromosome) == chr, ] else labels
+  fwrite(as.data.table(scaf_labels[, c("Position", "p_final", "Label")]),
+         file.path(var_name, paste0("manhattan_labels_", scaf, "_", var_name, ".tsv")), sep = "\t")
+  print(paste("Exported", scaf, ":", sum(keep), "SNPs,", nrow(scaf_labels), "labels"))
+}
+
 print(paste("Done:", var_name))

@@ -2,8 +2,6 @@
 
 #SBATCH --job-name=ngsParalog_chunk
 #SBATCH --partition=long
-#SBATCH --mail-type=FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --ntasks=1
 #SBATCH --mem=8gb
 #SBATCH --time=168:00:00

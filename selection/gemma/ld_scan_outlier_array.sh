@@ -2,8 +2,6 @@
 
 #SBATCH --job-name=ld_scan_outlier
 #SBATCH --partition=long
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --output=logs/ld_scan_outlier_%A_%a.log
 
 set -euo pipefail

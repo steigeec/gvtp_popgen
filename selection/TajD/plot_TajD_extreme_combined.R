@@ -79,6 +79,12 @@ INV_SCAFFOLD <- "DEINVI_00006"
 INV_START    <- 43e6
 INV_END      <- 50e6
 
+# Chr 6 fog outlier peak (19 retained 40000_3 SNPs, GNS1/SNF1; as in
+# fog_deinvi6_figure.R) -- the "fog peak" category of the stacked figure's panel K
+PEAK_SCAFFOLD <- "DEINVI_00006"
+PEAK_START    <- 49031257
+PEAK_END      <- 49146391
+
 # SNP-to-scaffold mapping
 snp_map <- fread(file.path(GEMMA_DIR, "scaffold_snp_map.txt"),
                  col.names = c("gemma_chr", "snp_id", "scaffold", "pos_on_scaffold"))
@@ -645,8 +651,9 @@ allpop_names <- intersect(names(pop_bamlists), names(tajd_by_pop))
 # "Outliers" is every matched outlier window (including ones inside the
 # inversion); "Putative inversion outliers" is the subset of those windows
 # that lie entirely inside the putative inversion.
-allpop_outlier_rows     <- list()
-allpop_inv_outlier_rows <- list()
+allpop_outlier_rows      <- list()
+allpop_inv_outlier_rows  <- list()
+allpop_peak_outlier_rows <- list()   # matched windows entirely inside the chr 6 fog peak
 for (vn in var_names) {
     if (vn %in% EXCLUDE_VARS) next
     if (nchar(tag)) {
@@ -698,10 +705,17 @@ for (vn in var_names) {
             allpop_inv_outlier_rows[[paste(pop, vn)]] <- data.frame(
                 TajimasD = td$TajimasD[inside_matched], population = pop, var_name = vn,
                 win_id = inside_matched, stringsAsFactors = FALSE)
+
+        peak_matched <- matched[w_chr == PEAK_SCAFFOLD & w_start >= PEAK_START & w_end <= PEAK_END]
+        if (length(peak_matched) > 0)
+            allpop_peak_outlier_rows[[paste(pop, vn)]] <- data.frame(
+                TajimasD = td$TajimasD[peak_matched], population = pop, var_name = vn,
+                win_id = peak_matched, stringsAsFactors = FALSE)
     }
 }
-allpop_outlier_df     <- bind_rows(allpop_outlier_rows)
-allpop_inv_outlier_df <- bind_rows(allpop_inv_outlier_rows)
+allpop_outlier_df      <- bind_rows(allpop_outlier_rows)
+allpop_inv_outlier_df  <- bind_rows(allpop_inv_outlier_rows)
+allpop_peak_outlier_df <- bind_rows(allpop_peak_outlier_rows)
 
 genome_med_all <- vapply(tajd_by_pop[allpop_names],
                          function(td) median(td$TajimasD, na.rm = TRUE), numeric(1))
@@ -740,6 +754,35 @@ build_pop_delta_df <- function(restrict_var = NULL) {
 
 pop_delta_df     <- build_pop_delta_df()
 pop_delta_df_fog <- build_pop_delta_df(restrict_var = "fog")
+
+# Fog peak version (stacked figure panel K): fog outlier windows entirely
+# inside the chr 6 fog peak vs. all OTHER genome-wide fog outlier windows
+# (peak windows excluded, so the two categories don't share windows).
+build_pop_delta_df_peak <- function(restrict_var = "fog") {
+    out_df  <- allpop_outlier_df[allpop_outlier_df$var_name == restrict_var, ]
+    peak_df <- allpop_peak_outlier_df[allpop_peak_outlier_df$var_name == restrict_var, ]
+    rows <- list()
+    for (pop in allpop_names) {
+        bg_med   <- genome_med_all[[pop]]
+        peak_ids <- peak_df$win_id[peak_df$population == pop]
+        sel      <- out_df$population == pop & !(out_df$win_id %in% peak_ids)
+        out_vals <- na.omit(out_df$TajimasD[sel])
+        if (length(out_vals) >= MIN_WINDOWS)
+            rows[[paste0(pop, "_out")]] <- data.frame(
+                population = pop, category = "Outliers", n_windows = length(out_vals),
+                delta_TajD = median(out_vals) - bg_med, stringsAsFactors = FALSE)
+        peak_vals <- na.omit(peak_df$TajimasD[peak_df$population == pop])
+        if (length(peak_vals) >= MIN_WINDOWS)
+            rows[[paste0(pop, "_peak")]] <- data.frame(
+                population = pop, category = "Fog peak outliers", n_windows = length(peak_vals),
+                delta_TajD = median(peak_vals) - bg_med, stringsAsFactors = FALSE)
+        else
+            message("Fog peak: ", pop, " has only ", length(peak_vals), " peak windows (< ", MIN_WINDOWS, ")")
+    }
+    bind_rows(rows)
+}
+pop_delta_df_fogpeak <- build_pop_delta_df_peak("fog")
+
 
 # ============================================================
 # KS tests: is each population's outlier-window Tajima's D distribution
@@ -823,7 +866,8 @@ Kling_by_pop <- merge(envvar, bam_to_pop, by = "sample_id") %>%
 # line drawn below) — only the two outlier categories are plotted as points
 category_shapes <- c(
     "Outliers"                    = 21,  # circle
-    "Putative inversion outliers" = 24   # triangle
+    "Putative inversion outliers" = 24,  # triangle
+    "Fog peak outliers"           = 24   # triangle (fog peak version)
 )
 
 delta_y_lab <- expression(Delta~"Tajima's D")
@@ -914,6 +958,20 @@ save_delta_plot(build_delta_plot(delta_fogcv_fog_df, "mean_fog_CV", "CV of fog d
 save_delta_plot(build_delta_plot(delta_fogdetrend_fog_df, "mean_fog_detrend",
                                  "Detrended SD of fog days/month"),
                 "TajD_delta_vs_fogDetrend_fog")
+fwrite(transform(delta_fogdetrend_fog_df, site = site_labels[population], color = pop_colors[population]),
+       file.path(OUTDIR, paste0("TajD_delta_vs_fogDetrend_fog", file_suffix, ".tsv")), sep = "\t")
+
+# Fog peak version -- plot-ready data for the stacked inversion figure
+# (gvtp_popgen/inversion/DEINVI_0006_stacked.py, panel K)
+delta_fogdetrend_fogpeak_df <- make_delta_df(pop_delta_df_fogpeak, fog_by_pop)
+save_delta_plot(build_delta_plot(delta_fogdetrend_fogpeak_df, "mean_fog_detrend",
+                                 "Detrended SD of fog days/month"),
+                "TajD_delta_vs_fogDetrend_fogPeak")
+fwrite(transform(delta_fogdetrend_fogpeak_df, site = site_labels[population], color = pop_colors[population]),
+       file.path(OUTDIR, paste0("TajD_delta_vs_fogDetrend_fogPeak", file_suffix, ".tsv")), sep = "\t")
+message(paste(capture.output(print(delta_fogdetrend_fogpeak_df[, c("population", "category", "n_windows",
+                                                                   "delta_TajD", "mean_fog_detrend")],
+                                   row.names = FALSE, digits = 3)), collapse = "\n"))
 
 # BIO15-only version — outliers restricted to the "BIO15" GEMMA scan
 pop_delta_df_BIO15      <- build_pop_delta_df(restrict_var = "BIO15")

@@ -2,8 +2,6 @@
 
 #SBATCH --job-name=pop_SAF
 #SBATCH --partition=long
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=36    # 4 parallel populations × 9 threads each
 #SBATCH --mem=100gb

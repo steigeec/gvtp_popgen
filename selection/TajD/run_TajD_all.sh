@@ -1,8 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=TajD_all
 #SBATCH --partition=long
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --nodes=1
 #SBATCH --ntasks=20
 #SBATCH --mem=400gb

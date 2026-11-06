@@ -33,8 +33,6 @@
 
 #SBATCH --job-name=ROHan_collect
 #SBATCH --partition=short
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mem=4gb

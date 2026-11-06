@@ -3,8 +3,6 @@
 
 #SBATCH --job-name=plotLDdecay
 #SBATCH --partition=long    
-#SBATCH --mail-type=BEGIN,END,FAIL          
-#SBATCH --mail-user=esteiger@ucsc.edu 
 #SBATCH --nodes=1    	
 #SBATCH --ntasks=1                  # 8 threads per job, 23 jobs
 #SBATCH --mem=1000gb                     # 5gb per job * 

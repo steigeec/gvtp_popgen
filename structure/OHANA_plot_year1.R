@@ -4,15 +4,7 @@
 library(ggplot2)
 library(tidyr)
 library(scatterpie)
-library(raster)
-#library(ggnewscale)
-library(sp)
 library(dplyr)
-#library(ggtree)
-library(rgdal)
-library(ggspatial)
-library(maptools)
-library(rgeos)
 library(sf)
 library(patchwork)
 library(terra)
@@ -41,7 +33,7 @@ proj <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
 # Define the cropping extent
 crop_extent <- st_bbox(c(xmin = -120.7, xmax = -120.1, ymin = 34.4, ymax = 34.9), crs = st_crs(proj))
 # crop the coast off
-CA<-st_read("../PCAngsd/GVTP_clip.shp")
+CA<-st_read("/private/groups/meyerlab/esteiger/env/study_area/GVTP_clip.shp")
 CA<-st_make_valid(CA)
 crop_extent_sf <- st_as_sfc(st_bbox(crop_extent))
 CA <- st_crop(CA, crop_extent)
@@ -49,7 +41,7 @@ CA<- st_simplify(CA)
 
 
 # Read in the DEM
-DEM <- rast("../PCAngsd/tranquillon_mountain_30m.dem")
+DEM <- rast("/private/groups/meyerlab/esteiger/env/tranquillon_mountain_30m.dem")
 crs(DEM) <- "EPSG:26710"
 DEM_transformed <- project(DEM, proj)
 
@@ -150,16 +142,22 @@ assign_ancestry_colors <- function(dat, k) {
 
   # Any further components still dominant within Strauss reflect a
   # within-Strauss split. The most-western one is West Tranquillon Mtn ->
-  # black; any others -> grey.
+  # black; any others each get their own shade of grey (darkest = more
+  # western, lightest = more eastern) so distinct sub-splits stay visually
+  # distinguishable instead of collapsing into one flat grey.
   other_strauss <- which(dominant_pop == "Strauss" & !claimed)
   if (length(other_strauss) > 0) {
     mean_long <- vapply(other_strauss, function(c) mean(dat$Long[assignment == c], na.rm=TRUE), numeric(1))
-    west_comp <- other_strauss[which.min(mean_long)]
+    ordered_comps <- other_strauss[order(mean_long)]
+
+    west_comp <- ordered_comps[1]
     colors[west_comp] <- "black"
     claimed[west_comp] <- TRUE
-    remaining <- setdiff(other_strauss, west_comp)
+
+    remaining <- ordered_comps[-1]
     if (length(remaining) > 0) {
-      colors[remaining] <- "#999999"
+      grey_ramp <- grDevices::colorRampPalette(c("#4d4d4d", "#cccccc"))(length(remaining))
+      colors[remaining] <- grey_ramp
       claimed[remaining] <- TRUE
     }
   }
@@ -184,7 +182,7 @@ assign_ancestry_colors <- function(dat, k) {
 best_runs <- read.table("year1/best_runs.txt", header=FALSE, sep="\t",
                          col.names=c("K", "iteration", "loglik"))
 
-for (k in 2:8) {
+for (k in sort(unique(best_runs$K))) {
   best_iter <- best_runs$iteration[best_runs$K == k]
   if (length(best_iter) != 1) {
     stop(sprintf("Expected exactly one best run for K=%d in best_runs.txt, found %d", k, length(best_iter)))
@@ -212,62 +210,26 @@ my_pop$Clusters <- factor(my_pop$Clusters, levels=c("VAFB_Lion_Head", "VAFB_Argu
 
 
 #merge pop data together with q matrices
-data_2<-cbind(my_pop, q_2)
-data_2<-data_2[!is.na(data_2$Clusters),]
-# Sort by environ variable of interest and then re-index
-data_2<-data_2[order(data_2$OHANA_order),]
-data_2$index <- seq(1, nrow(data_2))
-#hoizontalto vertical
-data_long_2<-gather(data_2, Cluster, Percentage, C1:C2, factor_key=T)
-data_3<-cbind(my_pop, q_3)
-data_3<-data_3[!is.na(data_3$Clusters),]
-data_3<-data_3[order(data_3$OHANA_order),]
-data_3$index <- seq(1, nrow(data_3))
-data_long_3<-gather(data_3, Cluster, Percentage, C1:C3, factor_key=T)
-data_4<-cbind(my_pop, q_4)
-data_4<-data_4[!is.na(data_4$Clusters),]
-data_4<-data_4[order(data_4$OHANA_order),]
-data_4$index <- seq(1, nrow(data_4))
-data_long_4<-gather(data_4, Cluster, Percentage, C1:C4, factor_key=T)
-data_5<-cbind(my_pop, q_5)
-data_5<-data_5[!is.na(data_5$Clusters),]
-data_5<-data_5[order(data_5$OHANA_order),]
-data_5$index <- seq(1, nrow(data_5))
-data_long_5<-gather(data_5, Cluster, Percentage, C1:C5, factor_key=T)
-data_6<-cbind(my_pop, q_6)
-data_6<-data_6[!is.na(data_6$Clusters),]
-data_6<-data_6[order(data_6$OHANA_order),]
-data_6$index <- seq(1, nrow(data_6))
-data_long_6<-gather(data_6, Cluster, Percentage, C1:C6, factor_key=T)
-data_7<-cbind(my_pop, q_7)
-data_7<-data_7[!is.na(data_7$Clusters),]
-data_7<-data_7[order(data_7$OHANA_order),]
-data_7$index <- seq(1, nrow(data_7))
-data_long_7<-gather(data_7, Cluster, Percentage, C1:C7, factor_key=T)
-data_8<-cbind(my_pop, q_8)
-data_8<-data_8[!is.na(data_8$Clusters),]
-data_8<-data_8[order(data_8$OHANA_order),]
-data_8$index <- seq(1, nrow(data_8))
-data_long_8<-gather(data_8, Cluster, Percentage, C1:C8, factor_key=T)
+for (k in sort(unique(best_runs$K))) {
+  qk <- get(paste0("q_", k))
+  dat <- cbind(my_pop, qk)
+  dat <- dat[!is.na(dat$Clusters),]
+  # Sort by environ variable of interest and then re-index
+  dat <- dat[order(dat$OHANA_order),]
+  dat$index <- seq(1, nrow(dat))
+  assign(paste0("data_", k), dat)
+  #hoizontalto vertical
+  assign(paste0("data_long_", k), gather(dat, Cluster, Percentage, all_of(paste0("C", seq_len(k))), factor_key=T))
+}
 
 
 # Evaluate how well the inferred clusters at each K recover the known
 # field populations (Clusters), as a complement to Evanno's delta K.
-# ARI and NMI are computed from scratch (base R) since neither mclust
-# nor aricode is available in the project's R library.
-
-adjusted_rand_index <- function(known, assignment) {
-  tab <- table(known, assignment)
-  n <- sum(tab)
-  a <- rowSums(tab)
-  b <- colSums(tab)
-  sum_comb <- function(v) sum(v * (v - 1) / 2)
-  index <- sum(tab * (tab - 1) / 2)
-  expected_index <- sum_comb(a) * sum_comb(b) / (n * (n - 1) / 2)
-  max_index <- (sum_comb(a) + sum_comb(b)) / 2
-  if (max_index == expected_index) return(1)
-  (index - expected_index) / (max_index - expected_index)
-}
+# NMI is computed from scratch (base R) since neither mclust nor aricode
+# is available in the project's R library. ARI was tried too but dropped:
+# it collapses toward 0 once the ground truth gets finer-grained than the
+# clustering (e.g. the 30-locality OHANA_order comparison below), which
+# makes it uninformative rather than just conservative there.
 
 normalized_mutual_info <- function(known, assignment) {
   tab <- table(known, assignment)
@@ -289,18 +251,44 @@ normalized_mutual_info <- function(known, assignment) {
   unname(mi / sqrt(h_x * h_y))
 }
 
-concordance <- data.frame(K = integer(), ARI = numeric(), NMI = numeric())
-for (k in 2:8) {
+concordance <- data.frame(K = integer(), NMI = numeric())
+for (k in sort(unique(best_runs$K))) {
   dat <- get(paste0("data_", k))
   comp_cols <- paste0("C", seq_len(k))
   assignment <- apply(as.matrix(dat[, comp_cols]), 1, which.max)
   known <- as.character(dat$Clusters)
   concordance <- rbind(concordance, data.frame(
     K = k,
-    ARI = adjusted_rand_index(known, assignment),
     NMI = normalized_mutual_info(known, assignment)
   ))
 }
+
+# The coarse 6-population ground truth treats each of the 6 field
+# populations (e.g. Strauss/Tranquillon Mtn) as a single label, so a K that
+# correctly resolves real sub-structure within one of them looks like a
+# concordance *penalty* rather than a reward. field_data.txt's OHANA_order
+# field already encodes real, field-verified sub-locality codes within each
+# population (e.g. Point_Conception has 51/54/66/70, Strauss has many more,
+# reflecting its much larger and more spatially spread-out sampling), so use
+# it directly as a finer-grained ground truth instead of an ad hoc
+# lat/long split. Coarse concordance saturating while OHANA_order
+# concordance keeps climbing would indicate the extra K is resolving real
+# sub-locality structure rather than overfitting noise.
+concordance_refined <- data.frame(K = integer(), NMI = numeric())
+for (k in sort(unique(best_runs$K))) {
+  dat <- get(paste0("data_", k))
+  comp_cols <- paste0("C", seq_len(k))
+  assignment <- apply(as.matrix(dat[, comp_cols]), 1, which.max)
+  refined <- as.character(dat$OHANA_order)
+  concordance_refined <- rbind(concordance_refined, data.frame(
+    K = k,
+    NMI = normalized_mutual_info(refined, assignment)
+  ))
+}
+
+concordance$Ground_truth <- "Coarse (6 populations)"
+concordance_refined$Ground_truth <- "Refined (OHANA_order sub-locality)"
+concordance_all <- rbind(concordance, concordance_refined)
 
 P_deltaK <- ggplot(stats, aes(x=K, y=delta_K)) +
   geom_line() +
@@ -308,13 +296,12 @@ P_deltaK <- ggplot(stats, aes(x=K, y=delta_K)) +
   labs(x="K", y="Delta K (Evanno method)", title="Evanno Method for Choosing K") +
   theme_minimal()
 
-P_concordance <- concordance %>%
-  gather(Metric, Value, ARI:NMI, factor_key=T) %>%
-  ggplot(aes(x=K, y=Value, color=Metric)) +
+P_concordance <- ggplot(concordance_all, aes(x=K, y=NMI, color=Ground_truth)) +
   geom_line() +
   geom_point() +
-  labs(x="K", y="Concordance with known populations",
-       title="Cluster assignment vs. known populations") +
+  labs(x="K", y="NMI with known populations",
+       title="Cluster assignment vs. known populations",
+       color="Ground truth") +
   theme_minimal()
 
 jpeg("year1/ARI_NMI_year1.jpg")
@@ -404,7 +391,15 @@ theme(strip.text=element_blank(),
 P8<-ggplot(data=data_long_8, aes(x=as.character(index), y=as.numeric(Percentage), fill=Cluster)) +
 geom_bar(stat="identity", color="black") +
 facet_grid(cols=vars(Clusters), scales="free_x", space="free_x",  labeller = labeller(Clusters = label_vec)) +
-  scale_fill_manual("", values=assign_ancestry_colors(data_8, 8))+
+  scale_fill_manual("", values={
+    # Swap the lightest grey (an extra Strauss split) for VAFB_Arguello's
+    # orange, since Arguello never claims its own component at K=8 (its
+    # individuals split across the Point_Conception- and VAFB_Lion_Head-
+    # dominant components instead) and its color would otherwise sit unused.
+    cols8 <- assign_ancestry_colors(data_8, 8)
+    cols8[cols8 == "#CCCCCC"] <- "#d55e00"
+    cols8
+  })+
   scale_y_continuous(name="Fraction composition", expand = c(0,0), breaks=seq(0,1,.2))+
 gvtp_theme +
 theme(strip.text=element_blank(),
@@ -422,9 +417,14 @@ print(P7 + theme(strip.text=element_text(size=75)))
 dev.off()
 
 
+jpeg("year1/ohana_8.jpg", width=6400, height=1000)
+print(P8 + theme(strip.text=element_text(size=75)))
+dev.off()
+
+
 # show the complete stack
-jpeg("year1/ohana_stack.jpg", width=6000, height=4500)
-print(P2 / P3 / P4 / P5 / P6 / P7 + plot_layout(heights = c(1, 1, 1, 1, 1,1)))
+jpeg("year1/ohana_stack.jpg", width=6000, height=5200)
+print(P2 / P3 / P4 / P5 / P6 / P7 / P8 + plot_layout(heights = c(1, 1, 1, 1, 1, 1, 1)))
 dev.off()
 
 

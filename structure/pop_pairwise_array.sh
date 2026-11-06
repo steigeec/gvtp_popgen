@@ -10,8 +10,6 @@
 
 #SBATCH --job-name=popFst_pair
 #SBATCH --partition=long
-#SBATCH --mail-type=FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --cpus-per-task=9
 #SBATCH --mem=150gb
 #SBATCH --time=168:00:00

@@ -1,21 +1,23 @@
 #!/private/home/esteiger/miniconda3/envs/herbie/bin/python3
 """
-Batch-download the 4-band HRRR subset (U/V 10m, TMP 2m, TCDC entire atm --
-the set WindNinja's HRRR reader requires) for ALL 1464 bloom-season
-climatology timesteps (2022-2024, Jun-Sep, 6-hourly -- same set as
-download_hrrr_wind.py), for the full-region WindNinja production run used to
-get per-population WindNinja direction (see PTGC1 validation: WindNinja
-direction is more accurate than raw HRRR direction there, so this is used to
-build a WindNinja-direction + HRRR-speed hybrid wind climatology for
-wind_connectivity.R / wind_aem_rda.R).
+Download the 4-band HRRR subset WindNinja needs (UGRD/VGRD 10 m, TMP 2 m,
+TCDC entire atmosphere) for the same 4896 timesteps as download_hrrr_wind.py.
+
+Output: GRIB2 files in BASE_DIR/wind/windninja_full/grib2,
+        read by run_windninja_landfire_batch.sh and
+        run_windninja_tranquillon_sensitivity.sh
+Env:    'herbie' conda env
+Usage:  /private/home/esteiger/miniconda3/envs/herbie/bin/python3 download_hrrr_full_subset.py
+Files already on disk are skipped by Herbie.
 """
 import pandas as pd
 from herbie import FastHerbie
 
-YEARS = [2022, 2023, 2024]
-BLOOM_MONTHS = [6, 7, 8, 9]
+YEARS = list(range(2015, 2023))   # pre-turbine (Strauss Wind Farm began operating 2023)
+BLOOM_MONTHS = [6, 7, 8, 9, 10]   # Gaviota tarplant flowering season, June-October
 HOURS = [0, 6, 12, 18]
-SAVE_DIR = "/private/groups/meyerlab/esteiger/wind/windninja_full/grib2"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+SAVE_DIR = f"{BASE_DIR}/wind/windninja_full/grib2"
 BANDS = ":(UGRD|VGRD):10 m above ground|:TMP:2 m above ground|:TCDC:entire atmosphere"
 
 

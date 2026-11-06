@@ -8,18 +8,12 @@
 # are visually comparable; output files are all "rohan_"-prefixed so they
 # never collide with the original bcftools-based jpgs still in diversity/ROH/.
 #
-# *** PRELIMINARY / IN PROGRESS ***
-# ROHan is still running (see gvtp_popgen/diversity/ROHan/launch_rohan.sh).
-# This script only analyses samples that have a valid summary.txt so far —
-# NOT all 423 samples. Unlike the original script (where a sample's absence
-# from roh_regions.txt legitimately means "zero ROH found"), a ROHan sample's
-# absence right now usually just means "not processed yet" — so the
-# completed-sample set is read from rohan_summary_stats.txt (one row per
-# sample ROHan has actually finished) rather than from field_data.txt, and
-# only THOSE samples get zero-imputed when they have no ROH segments.
-# Re-run this script (after re-running collect_rohan.sh) as more samples
-# finish; sample counts are printed throughout so it's always clear how
-# preliminary a given plot is.
+# ROHan has completed for all 423 samples (see gvtp_popgen/diversity/ROHan/launch_rohan.sh).
+# Unlike the original script (where a sample's absence from roh_regions.txt
+# legitimately means "zero ROH found"), the completed-sample set is read from
+# rohan_summary_stats.txt (one row per sample ROHan has finished) rather than
+# from field_data.txt, and only THOSE samples get zero-imputed when they have
+# no ROH segments. Sample counts are printed throughout for reference.
 #
 # Input:  rohan_regions.txt        (produced by collect_rohan.sh)
 #         rohan_summary_stats.txt  (produced by collect_rohan.sh)
@@ -35,8 +29,14 @@
 #         rohan_{total_ROH,prop_long}_by_cluster_4x_lat.jpg
 #         rohan_{total_ROH,prop_long}_vs_coverage.jpg    (coverage confound check)
 #         rohan_{total_ROH,prop_long}_vs_{BCM_30y,BCM_germ_yr,fog_30y,fog_germ_yr,BIO18,BIO18_germ_yr}_{individuals,strauss}.jpg
-#         rohan_{total_ROH,prop_long}_strauss_by_year.jpg (Tranquillon Mtn, 2020/2021/2022)
-#         rohan_vs_bcftools_total_ROH_comparison.jpg      (old vs new, total ROH only, preliminary)
+#         rohan_total_ROH_strauss_by_year.jpg  (Tranquillon Mtn, 2020/2021/2022, single panel;
+#                                                styled to match inbreeding_violin_by_year.jpg)
+#         rohan_prop_long_strauss_by_year.jpg  (same, but 3-panel: warm-qtr precip / fog /
+#                                                prop_long_ROH, all by year, same individuals,
+#                                                skinny-tall panels via patchwork)
+#         rohan_{total_ROH,prop_long}_bars_Strauss.jpg    (Tranquillon Mtn by stand/OHANA_order;
+#                                                            styled to match inbreeding_bars_Strauss.jpg)
+#         rohan_vs_bcftools_total_ROH_comparison.jpg      (old vs new, total ROH only)
 #
 # Showing both metrics everywhere is temporary while we're still deciding
 # which one (or both) to use going forward.
@@ -45,6 +45,8 @@
 .libPaths("/private/groups/meyerlab/esteiger/software/R_libs")
 library(ggplot2)
 library(ggbeeswarm)
+library(patchwork)
+library(dunn.test)
 
 setwd("/private/groups/meyerlab/esteiger/diversity/ROH/ROHan")
 
@@ -100,7 +102,7 @@ roh$Length_bp <- roh$ROH_length_bp
 
 # rohan_summary_stats.txt has exactly one row per sample ROHan has completed
 # (whether or not it had any ROH) — this, not field_data.txt, is the correct
-# "completed" set for zero-imputation while the run is still in progress.
+# "completed" set for zero-imputation.
 rohan_done <- read.table("rohan_summary_stats.txt", header = TRUE, sep = "\t")
 rohan_done$Sample <- as.character(rohan_done$Sample)
 completed_samples <- data.frame(SampleID = rohan_done$Sample)
@@ -135,9 +137,10 @@ roh_summary[is.na(roh_summary$n_ROH), c("n_ROH", "total_ROH_Mb", "long_ROH_Mb",
 roh_summary$prop_genome_long_ROH <- roh_summary$long_ROH_Mb * 1e6 / GENOME_SIZE_BP
 
 # ==============================================================================
-# 4. Merge with metadata (Cov for per-plot filtering, Year for the Strauss plot)
+# 4. Merge with metadata (Cov for per-plot filtering, Year for the Strauss plot,
+#    OHANA_order for the by-stand plot matching inbreeding_bars_Strauss.jpg)
 # ==============================================================================
-roh_summary <- merge(roh_summary, field[, c("SampleID", "Clusters", "Cov", "Lat", "Year")],
+roh_summary <- merge(roh_summary, field[, c("SampleID", "Clusters", "Cov", "Lat", "Year", "OHANA_order")],
                      by = "SampleID", all.x = TRUE)
 
 cat(sprintf("Samples in analysis: %d\n", nrow(roh_summary)))
@@ -155,7 +158,7 @@ roh_summary$mean_fog <- fog_cluster$fog[match(roh_summary$Clusters, fog_cluster$
 
 cat("\nCluster order (increasing fog):\n")
 print(fog_cluster)
-cat("\nTotal ROH summary by cluster (preliminary, completed samples only):\n")
+cat("\nTotal ROH summary by cluster (all completed samples):\n")
 print(aggregate(total_ROH_Mb ~ Clusters, data = roh_summary,
                 FUN = function(x) round(c(median = median(x), mean = mean(x),
                                           IQR = IQR(x), n = length(x)), 2)))
@@ -198,6 +201,20 @@ popcolors <- c(
   "Dangermond"       = "#56b4e9"
 )
 
+# Per-stand (OHANA_order) palette, copied verbatim from inbreeding_plot.R so
+# the by-stand plot below is directly visually comparable to
+# inbreeding_bars_Strauss.jpg.
+clustercolors <- c(
+  "72" = "#EE8866",
+  "73" = "#99DDFF", "74" = "#99DDFF",
+  "75" = "#EEDD88", "78" = "#EEDD88", "79" = "#EEDD88",
+  "80" = "#EEDD88", "81" = "#EEDD88", "82" = "#EEDD88", "83" = "#EEDD88",
+  "85" = "#DDDDDD", "86" = "#DDDDDD", "87" = "#DDDDDD", "89" = "#DDDDDD",
+  "88" = "#77AADD", "90" = "#77AADD", "91" = "#77AADD", "392" = "#77AADD", "486" = "#77AADD"
+)
+OHANA_LEVELS <- c("72", "73", "74", "75", "78", "79", "80", "81", "82", "83",
+                  "85", "86", "87", "89", "88", "90", "91", "392", "486")
+
 # Both metrics are shown in every plot below, for now (total ROH: cumulative
 # autozygosity across all time depths; proportion of genome in long ROH:
 # isolates the recent-inbreeding signal specifically — see the >1Mb/50-
@@ -218,7 +235,7 @@ for (m in Y_METRICS) {
   for (cov_thresh in c(2, 4)) {
     dat <- roh_summary[!is.na(roh_summary$Cov) & roh_summary$Cov > cov_thresh, ]
     outfile <- sprintf("rohan_%s_by_cluster_%dx.jpg", m$tag, cov_thresh)
-    cat(sprintf("Plotting %s (%d samples >%dx, preliminary)...\n", outfile, nrow(dat), cov_thresh))
+    cat(sprintf("Plotting %s (%d samples >%dx)...\n", outfile, nrow(dat), cov_thresh))
     jpeg(outfile, height = 1200, width = 1100)
     print(
       ggplot(dat, aes(x = Clusters, y = .data[[m$var]])) +
@@ -227,7 +244,7 @@ for (m in Y_METRICS) {
         scale_fill_viridis_c(direction = -1, name = "Mean fog\n(hrs/day)",
                              option = "viridis") +
         labs(y = m$lab,
-             subtitle = sprintf("PRELIMINARY: %d/%d ROHan samples completed", nrow(completed_samples), n_eligible)) +
+             subtitle = sprintf("%d/%d ROHan samples completed", nrow(completed_samples), n_eligible)) +
         gvtp_theme +
         theme(axis.text        = element_text(vjust = 0, hjust = 1),
               axis.title.x     = element_blank(),
@@ -255,7 +272,7 @@ for (m in Y_METRICS) {
 # ==============================================================================
 roh_summary$AnalysisCov <- pmin(roh_summary$Cov, 6)
 dat_cov <- roh_summary[!is.na(roh_summary$AnalysisCov), ]
-cat(sprintf("\n*** Coverage confound check — PRELIMINARY, n=%d completed samples ***\n", nrow(dat_cov)))
+cat(sprintf("\n*** Coverage confound check, n=%d completed samples ***\n", nrow(dat_cov)))
 
 for (m in Y_METRICS) {
   yvals <- dat_cov[[m$var]]
@@ -279,7 +296,7 @@ for (m in Y_METRICS) {
       labs(x = "Analysis coverage (x; downsampled to 6x cap)",
            y = m$lab,
            title = "Coverage confound check",
-           subtitle = sprintf("PRELIMINARY, n=%d%s", nrow(dat_cov),
+           subtitle = sprintf("n=%d%s", nrow(dat_cov),
                               if (!is.na(r_cov)) sprintf("; r=%.2f", r_cov) else "")) +
       theme_bw(base_size = 14)
   )
@@ -309,7 +326,7 @@ if (nrow(dat_lat) >= 1) {
         scale_fill_manual(values = popcolors, guide = "none") +
         scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.05))) +
         labs(y = m$lab,
-             subtitle = sprintf("PRELIMINARY: %d/%d ROHan samples completed", nrow(completed_samples), n_eligible)) +
+             subtitle = sprintf("%d/%d ROHan samples completed", nrow(completed_samples), n_eligible)) +
         gvtp_theme +
         theme(axis.text        = element_text(vjust = 0, hjust = 1),
               axis.title.x     = element_blank(),
@@ -334,7 +351,7 @@ roh_bcm <- merge(roh_summary,
                  by = "SampleID", all.x = TRUE)
 dat_bcm <- roh_bcm[!is.na(roh_bcm$Cov) & roh_bcm$Cov > 20, ]
 
-cat(sprintf("\nEnvironmental scatter dataset: %d individuals (>20x, preliminary)\n", nrow(dat_bcm)))
+cat(sprintf("\nEnvironmental scatter dataset: %d individuals (>20x)\n", nrow(dat_bcm)))
 
 strauss_col <- popcolors["Strauss"]
 
@@ -358,7 +375,7 @@ make_env_scatter <- function(dat, xvar, xlab, yvar, ylab, outfile, subset_straus
       scale_fill_manual(values = popcolors, guide = "none")
   }
   print(p + labs(x = xlab, y = ylab,
-                 subtitle = sprintf("PRELIMINARY, n=%d", nrow(dat))) +
+                 subtitle = sprintf("n=%d", nrow(dat))) +
           theme_bw(base_size = 24))
   dev.off()
   cat(sprintf("  Written to %s (n=%d)\n", outfile, nrow(dat)))
@@ -383,8 +400,8 @@ for (m in Y_METRICS) {
 }
 
 # ==============================================================================
-# 11. Old (bcftools roh) vs New (ROHan) comparison — PRELIMINARY
-#     Only meaningful for samples ROHan has actually completed so far.
+# 11. Old (bcftools roh) vs New (ROHan) comparison
+#     Only meaningful for samples ROHan has actually completed.
 #     Not expecting the same absolute scale: different underlying models
 #     (bcftools roh from called genotypes vs ROHan directly from BAM
 #     genotype likelihoods). rohan_regions.txt now uses ROHan's mid
@@ -411,7 +428,7 @@ names(new_summary)[names(new_summary) == "total_ROH_Mb"] <- "new_total_ROH_Mb"
 # comparing only where we actually have both numbers.
 comparison <- merge(new_summary, old_summary, by = "SampleID")
 
-cat(sprintf("\n*** Old (bcftools roh) vs New (ROHan) comparison — PRELIMINARY, n=%d completed samples ***\n",
+cat(sprintf("\n*** Old (bcftools roh) vs New (ROHan) comparison, n=%d completed samples ***\n",
             nrow(comparison)))
 print(comparison[order(-comparison$new_total_ROH_Mb),
                   c("SampleID", "Clusters", "Cov", "old_total_ROH_Mb", "new_total_ROH_Mb", "old_n_ROH", "new_n_ROH")])
@@ -424,17 +441,16 @@ if (nrow(comparison) >= 3 && sd(comparison$old_total_ROH_Mb) > 0 && sd(compariso
   cat("Not enough variation / samples yet for a correlation coefficient.\n")
 }
 
-max_val <- max(comparison$old_total_ROH_Mb, comparison$new_total_ROH_Mb, 1)
 jpeg("rohan_vs_bcftools_total_ROH_comparison.jpg", units = "in", height = 6.5, width = 8.5, res = 300)
 print(
   ggplot(comparison, aes(x = old_total_ROH_Mb, y = new_total_ROH_Mb, fill = Clusters)) +
-    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey60") +
     geom_point(color = "black", size = 3, shape = 21, alpha = 0.8) +
     scale_fill_manual(values = popcolors, labels = cluster_labels, name = "Cluster") +
-    coord_equal(xlim = c(0, max_val), ylim = c(0, max_val)) +
+    scale_x_continuous(expand = expansion(mult = 0.05)) +
+    scale_y_continuous(expand = expansion(mult = 0.05)) +
     labs(x = "Total ROH (Mb) — bcftools roh (old)",
          y = "Total ROH (Mb) — ROHan, mid threshold (new)",
-         title = "Old vs new ROH calls — PRELIMINARY",
+         title = "Old vs new ROH calls",
          subtitle = sprintf("n=%d completed ROHan samples of %d total%s",
                             nrow(comparison), n_eligible,
                             if (!is.na(r)) sprintf("; r=%.2f", r) else "")) +
@@ -446,38 +462,154 @@ cat("Comparison plot written to rohan_vs_bcftools_total_ROH_comparison.jpg\n")
 
 # ==============================================================================
 # 12. Tranquillon Mtn (Strauss) ROH by year — 2020 / 2021 / 2022
-#     ROHan (new) results only, completed samples so far — PRELIMINARY
+#     ROHan (new) results only
+#     Styled to match inbreeding_violin_by_year.jpg (inbreeding_plot.R) exactly:
+#     plain gray80 boxplot (no per-year color, no jitter overlay), same
+#     dimensions, same gvtp_theme + y-axis-title hjust tweak, no title/subtitle
+#     clutter — so this is directly visually comparable to that plot.
+#     (total_ROH only here — prop_long gets the 3-panel climate-context
+#     version in section 12c below, per request.)
 # ==============================================================================
 strauss <- roh_summary[roh_summary$Clusters == "Strauss" & !is.na(roh_summary$Year), ]
 strauss <- strauss[strauss$Year %in% c(2020, 2021, 2022), ]
 strauss$Year <- factor(strauss$Year, levels = c(2020, 2021, 2022))
 
-cat(sprintf("\n*** Tranquillon Mtn (Strauss) by year — PRELIMINARY, n=%d completed samples ***\n", nrow(strauss)))
+cat(sprintf("\n*** Tranquillon Mtn (Strauss) by year, n=%d completed samples ***\n", nrow(strauss)))
 print(table(strauss$Year))
 
+year_panel_theme <- gvtp_theme + theme(axis.title.y = element_text(hjust = 0.3))
+
 if (nrow(strauss) >= 1) {
-  for (m in Y_METRICS) {
-    outfile <- sprintf("rohan_%s_strauss_by_year.jpg", m$tag)
-    jpeg(outfile, units = "in", height = 6.5, width = 7.5, res = 300)
-    print(
-      ggplot(strauss, aes(x = Year, y = .data[[m$var]])) +
-        geom_boxplot(fill = strauss_col, col = "black", outlier.shape = NA) +
-        geom_jitter(width = 0.15, height = 0, size = 2, alpha = 0.7) +
-        labs(x = "Year", y = m$lab,
-             title = "Tranquillon Mtn (Strauss) ROH by year",
-             subtitle = sprintf("PRELIMINARY: n=%d of eventual Strauss cohort (ROHan mid threshold)", nrow(strauss))) +
-        theme_bw(base_size = 20) +
-        theme(plot.title = element_text(size = 20), plot.subtitle = element_text(size = 13))
-    )
-    dev.off()
-    cat(sprintf("Plot written to %s\n", outfile))
-  }
+  outfile <- "rohan_total_ROH_strauss_by_year.jpg"
+  jpeg(outfile, height = 1100, width = 1100)
+  print(
+    ggplot(data = strauss) +
+      geom_boxplot(aes(x = Year, y = total_ROH_Mb), fill = "gray80", color = "black",
+                   outlier.size = 5, linewidth = 2) +
+      labs(x = "Year", y = "Total ROH length (Mb)") +
+      year_panel_theme
+  )
+  dev.off()
+  cat(sprintf("Plot written to %s\n", outfile))
 } else {
   cat("Skipping Strauss-by-year plot — no completed Strauss samples with a 2020-2022 Year yet.\n")
 }
 
 # ==============================================================================
-# 13. Per-individual mid estimate with min/max spread — PRELIMINARY
+# 12c. Two-panel version for prop_long_ROH: BIO12 (water-year precip.) and
+#      prop_long_ROH, both by year, same Strauss individuals, same
+#      box-and-whisker style. Skinny/tall panels combined via patchwork,
+#      following the multi-panel pattern in inbreeding_plot.R
+#      (soilmoist_inbreeding_by_year_Strauss.jpg).
+#
+#      Uses BIO12_germ_yr (germination-year-specific value), NOT the 30-year
+#      climate normal (BIO12) — the normal is fixed per location and
+#      wouldn't show any real signal across sampling years; only the
+#      germ-yr version actually varies year to year.
+# ==============================================================================
+strauss_clim <- merge(strauss, env[, c("SampleID", "BIO12_germ_yr")],
+                      by = "SampleID", all.x = TRUE)
+
+cat(sprintf("\n*** Strauss 2-panel climate-context plot, n=%d completed samples ***\n",
+            nrow(strauss_clim)))
+
+# --- Statistical test: prop_genome_long_ROH ~ Year (Strauss) -----------------
+# Kruskal-Wallis (non-parametric, matches inbreeding_plot.R's kw_strauss_year
+# approach for NGSF ~ Year) since ROH proportions aren't expected to be
+# normally distributed. Dunn test with Bonferroni correction for pairwise
+# year comparisons if the omnibus test suggests it's worth following up.
+if (nrow(strauss_clim) >= 3 && length(unique(strauss_clim$Year)) >= 2) {
+  cat("\nMedian prop_genome_long_ROH by year (Strauss):\n")
+  print(tapply(strauss_clim$prop_genome_long_ROH, strauss_clim$Year, median))
+
+  kw_prop_long <- kruskal.test(prop_genome_long_ROH ~ Year, data = strauss_clim)
+  cat("\n=== Kruskal-Wallis: Strauss prop_genome_long_ROH ~ Year ===\n")
+  print(kw_prop_long)
+
+  cat("\n=== Dunn test (Bonferroni): Strauss prop_genome_long_ROH ~ Year ===\n")
+  dunn_prop_long <- dunn.test(strauss_clim$prop_genome_long_ROH, strauss_clim$Year,
+                              method = "bonferroni")
+
+  # --- Drought-year contrast: 2021 (extreme drought, lowest BIO12_germ_yr)
+  # vs. 2020+2022 combined (non-drought) — Wilcoxon rank-sum, matching the
+  # binary drought-vs-non-drought contrast used for NGSF in inbreeding_plot.R.
+  strauss_clim$drought_group <- ifelse(strauss_clim$Year == "2021",
+                                       "drought_2021", "non_drought_2020_2022")
+  cat("\n=== Wilcoxon rank sum: Strauss prop_genome_long_ROH, 2021 (drought) vs 2020+2022 (non-drought) ===\n")
+  wilcox_prop_long_drought <- wilcox.test(prop_genome_long_ROH ~ drought_group,
+                                          data = strauss_clim)
+  print(wilcox_prop_long_drought)
+} else {
+  cat("\nSkipping Kruskal-Wallis/Dunn/Wilcoxon tests — not enough samples or year groups yet.\n")
+}
+
+if (nrow(strauss_clim) >= 1) {
+  # CANVAS IS NOW FIXED at 4500x2400 (matching the very first sizing request)
+  # and will NOT be rescaled again when these values change — scaling the
+  # canvas in lockstep with font/linewidth (as earlier revisions did) makes
+  # every version look identical at any given viewing size, since it's a
+  # pure proportional scale-up. Growing these values against a fixed canvas
+  # is what actually makes them bigger relative to the plot.
+  # panel border linewidth 8, box/whisker linewidth 8, font size 160.
+  big_panel_theme <- year_panel_theme +
+    theme(text = element_text(size = 160),
+          panel.border = element_rect(colour = "black", fill = NA, linewidth = 8))
+
+  p_bcm <- ggplot(strauss_clim, aes(x = Year, y = BIO12_germ_yr)) +
+    geom_boxplot(fill = "gray80", color = "black", outlier.size = 11, linewidth = 8) +
+    labs(x = "Year", y = "Water year precip.") +
+    big_panel_theme
+
+  p_prop_long <- ggplot(strauss_clim, aes(x = Year, y = prop_genome_long_ROH)) +
+    geom_boxplot(fill = "gray80", color = "black", outlier.size = 11, linewidth = 8) +
+    labs(x = "Year", y = "Prop. ROH >1Mb") +
+    big_panel_theme
+
+  outfile <- "rohan_prop_long_strauss_by_year.jpg"
+  jpeg(outfile, height = 2400, width = 4500)
+  print(p_bcm + p_prop_long)
+  dev.off()
+  cat(sprintf("Plot written to %s\n", outfile))
+} else {
+  cat("Skipping Strauss 3-panel climate-context plot — no completed samples with a 2020-2022 Year yet.\n")
+}
+
+# ==============================================================================
+# 12b. Tranquillon Mtn (Strauss) ROH by stand (OHANA_order)
+#      Styled to match inbreeding_bars_Strauss.jpg exactly: boxplot per stand,
+#      filled with the same clustercolors palette, x-axis labels hidden (too
+#      many stands to label legibly), same gvtp_theme.
+# ==============================================================================
+strauss_stand <- roh_summary[roh_summary$Clusters == "Strauss" & !is.na(roh_summary$OHANA_order), ]
+strauss_stand$OHANA_order <- factor(as.character(strauss_stand$OHANA_order), levels = OHANA_LEVELS)
+
+cat(sprintf("\n*** Tranquillon Mtn (Strauss) by stand, n=%d completed samples ***\n", nrow(strauss_stand)))
+print(table(strauss_stand$OHANA_order))
+
+if (nrow(strauss_stand) >= 1) {
+  for (m in Y_METRICS) {
+    outfile <- sprintf("rohan_%s_bars_Strauss.jpg", m$tag)
+    jpeg(outfile, height = 1000, width = 1200)
+    print(
+      ggplot() +
+        geom_boxplot(data = strauss_stand,
+                     aes(x = OHANA_order, y = .data[[m$var]], fill = OHANA_order),
+                     colour = "black", linewidth = 2, outlier.size = 5) +
+        scale_fill_manual(values = clustercolors, guide = "none") +
+        labs(x = "Stand", y = m$lab) +
+        gvtp_theme +
+        theme(axis.text.x = element_blank(),
+              axis.text.y = element_text(hjust = 0))
+    )
+    dev.off()
+    cat(sprintf("Plot written to %s\n", outfile))
+  }
+} else {
+  cat("Skipping Strauss-by-stand plot — no completed Strauss samples with an OHANA_order yet.\n")
+}
+
+# ==============================================================================
+# 13. Per-individual mid estimate with min/max spread
 #     rohan_roh_burden_by_threshold.txt (from collect_rohan.sh) has, per
 #     sample, total ROH Mb computed three ways: mid (point estimate, the bar),
 #     max (theta upper bound -> conservative/fewer ROH -> a LOWER total), and
@@ -500,7 +632,7 @@ burden <- merge(burden, roh_summary[, c("SampleID", "Clusters")],
 burden <- burden[order(burden$Clusters, -burden$Total_ROH_Mb_mid), ]
 burden$Sample <- factor(burden$Sample, levels = unique(burden$Sample))
 
-cat(sprintf("\n*** Per-individual mid/min/max ROH spread — PRELIMINARY, n=%d completed samples ***\n", nrow(burden)))
+cat(sprintf("\n*** Per-individual mid/min/max ROH spread, n=%d completed samples ***\n", nrow(burden)))
 cat(sprintf("Samples where the lenient (min) estimate exceeds 500 Mb (>37%% of the genome): %d of %d\n",
             sum(burden$Total_ROH_Mb_min > 500), nrow(burden)))
 
@@ -521,7 +653,7 @@ print(
                        breaks = c(0, 1, 10, 100, 1000)) +
     labs(x = NULL, y = "Total ROH (Mb), pseudo-log scale",
          title = "Per-individual ROH: mid estimate (bar) with min/max spread (red line)",
-         subtitle = sprintf("PRELIMINARY, n=%d completed samples. Red line = conservative (max) to lenient (min) range —\nlenient bound often approaches whole-genome size (see console output); read cautiously.", nrow(burden))) +
+         subtitle = sprintf("n=%d completed samples. Red line = conservative (max) to lenient (min) range —\nlenient bound often approaches whole-genome size (see console output); read cautiously.", nrow(burden))) +
     theme_bw(base_size = 11) +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 6),
           plot.subtitle = element_text(size = 10))
@@ -543,7 +675,7 @@ print(
               labeller = as_labeller(cluster_labels)) +
     labs(x = NULL, y = "Total ROH (Mb)",
          title = "Per-individual ROH: mid estimate (bar) down to conservative (max) bound",
-         subtitle = sprintf("PRELIMINARY, n=%d completed samples. Blue line = mid down to the theta-upper-bound (conservative) estimate.", nrow(burden))) +
+         subtitle = sprintf("n=%d completed samples. Blue line = mid down to the theta-upper-bound (conservative) estimate.", nrow(burden))) +
     theme_bw(base_size = 11) +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 6),
           plot.subtitle = element_text(size = 10))

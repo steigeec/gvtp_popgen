@@ -30,6 +30,16 @@ gvtp_theme <- theme_bw() +
 
 
 popcolors <- c("CDFW" = "#e69f00", "CDFW_MR" = "#e69f00", "Strauss"="#009e73", "Point_Conception"="#0072b2", "VAFB_Lion_Head"="#f0e442", "VAFB_Arguello"="#d55e00", "Dangermond"="#56b4e9")         # Bang Wang color palette
+
+# Compact "5.0 x 10^-3" style axis labels (as a plotmath expression, so the
+# exponent renders superscripted) in place of scales::label_scientific()'s
+# longer "5.0e-03" — shorter labels needed less room once the axis text
+# went to a 45-degree angle.
+sci_axis_labels <- function(x) {
+  lab <- sprintf("%.1e", x)
+  lab <- sub("e([+-])0*(\\d)", "e\\1\\2", lab)
+  parse(text = gsub("e", " %*% 10^", lab))
+}
 			           
 files <- list.files(pattern = "*.ml")
 
@@ -113,7 +123,7 @@ ggplot() +
 dev.off()
 
 inbmed$Year<-as.factor(inbmed$Year)
-inbmed$Clusters<-factor(inbmed$Clusters, levels=c("VAFB_Lion_Head", "VAFB_Arguello", "Strauss", "Dangermond", "Point_Conception", "CDFW"))
+inbmed$Clusters<-factor(inbmed$Clusters, levels=c("VAFB_Lion_Head", "VAFB_Arguello", "Dangermond", "Point_Conception", "Strauss", "CDFW"))
 
 # het AS BOXPLOY BY LOCATION WITH CORRECTION
 jpeg("het_boxplot_by_location_correction.jpg", height=1200, width=800)
@@ -136,13 +146,13 @@ geom_boxplot(col="black", aes(fill=Clusters),  outlier.size = 4, lwd = 1.5) +
 scale_x_discrete(labels=c("CDFW"="CDFW", "Dangermond"="Dangermond", "Point_Conception"="Pt. Conception", "Strauss"="Strauss", "VAFB_Arguello"="Pt. Arguello", "VAFB_Lion_Head"="Lion's Head"))+
 scale_fill_manual(values=popcolors, guide="none") +
 labs(y="Residual nucleotide diversity")+
-scale_y_continuous(labels = label_scientific(digits = 2)) +
+scale_y_continuous(labels = sci_axis_labels, breaks = c(0, 0.0025, 0.005)) +
 gvtp_theme +
 theme(
 axis.text.x=element_blank(),
-axis.text.y=element_text(angle=0, hjust=1),
+axis.text.y=element_text(angle=45, hjust=1),
 axis.title.x=element_blank(),
-axis.title.y = element_text(vjust = 0.8))
+axis.title.y = element_text(vjust = 0.8, margin = margin(r = -10)))
 dev.off()
 
 dunn.test(inbmed$residual, inbmed$Clusters, method = "bonferroni")

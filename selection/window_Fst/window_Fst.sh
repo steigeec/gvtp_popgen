@@ -2,8 +2,6 @@
 
 #SBATCH --job-name=window_Fst
 #SBATCH --partition=long
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --cpus-per-task=27
 #SBATCH --mem=100gb
 #SBATCH --time=168:00:00

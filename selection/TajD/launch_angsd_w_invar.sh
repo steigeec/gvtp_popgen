@@ -2,8 +2,6 @@
 
 #SBATCH --job-name=angsd_invar
 #SBATCH --partition=long
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --nodes=1
 #SBATCH --ntasks=9
 #SBATCH --mem=1000gb

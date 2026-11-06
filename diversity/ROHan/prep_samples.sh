@@ -18,8 +18,6 @@
 
 #SBATCH --job-name=prep_rohan
 #SBATCH --partition=long
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --nodes=1
 #SBATCH --ntasks=4
 #SBATCH --mem=16gb

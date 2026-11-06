@@ -1,8 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=merge_filter_snps
 #SBATCH --partition=long
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --nodes=1
 #SBATCH --ntasks=8
 #SBATCH --mem=64gb

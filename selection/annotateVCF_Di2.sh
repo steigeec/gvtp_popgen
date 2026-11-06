@@ -2,8 +2,6 @@
 
 #SBATCH --job-name=annotateVCF_Di2
 #SBATCH --partition=long
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mem=100gb

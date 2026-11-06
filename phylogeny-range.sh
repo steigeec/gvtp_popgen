@@ -5,7 +5,7 @@
 # Builds a two-panel figure for Deinandra increscens subsp. villosa (Gaviota
 # tarplant):
 #   1. its phylogenetic placement among close Deinandra relatives, reproduced
-#      (topology only) from a published figure -- see deinandra_phylogeny.nwk
+#      (topology only) from a published figure -- see $OUTDIR/deinandra_phylogeny.nwk
 #      and phylogeny_range.R headers for the full citation trail (Simpson 2010
 #      Plant Systematics Fig. 19.9, drawing on Baldwin's molecular work on
 #      Deinandra);
@@ -45,8 +45,6 @@
 
 #SBATCH --job-name=phylogeny_range
 #SBATCH --partition=short
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mem=4gb
@@ -59,7 +57,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUTDIR=/private/groups/meyerlab/esteiger/phylogeny_range
 mkdir -p "$OUTDIR"
 
-TREE_FILE="$SCRIPT_DIR/deinandra_phylogeny.nwk"
+TREE_FILE="$OUTDIR/deinandra_phylogeny.nwk"
 OCC_CSV="$OUTDIR/deinandra_occurrences.csv"
 VILLOSA_CSV=/private/groups/meyerlab/esteiger/pheno/updatedvarsandpheno.csv
 OUT_PNG="$OUTDIR/deinandra_phylogeny_range.png"

@@ -1,25 +1,14 @@
 #!/private/home/esteiger/miniconda3/envs/herbie/bin/python3
 """
-Download HRRR 10 m wind (U/V components) for the Point Conception study area
-and build a bloom-season (Jun-Sep) wind climatology that has BOTH speed and
-direction as a genuinely gridded field -- unlike the Global Wind Atlas layer
-(speed only, no direction) and the 4 weather stations (direction only at
-those 4 points; see chat discussion).
+Download HRRR 10 m wind (u/v) for the Point Conception study area, bloom
+season (Jun-Oct) 2015-2022, 6-hourly (00, 06, 12, 18 UTC).
 
-HRRR is a 3 km CONUS model, hourly, back to ~2014, on a curvilinear (Lambert
-Conformal) grid -- NOT a simple lat/lon grid, so subsetting is done by
-boolean masking on the 2D lat/lon coordinate arrays rather than simple index
-slicing.
-
-Sampling scheme: 3 recent years (2022-2024) x bloom months (Jun-Sep) x
-6-hourly synoptic times (00, 06, 12, 18 UTC) = ~1460 timesteps. This is a
-climatology sample, not exhaustive hourly coverage -- a reasonable trade-off
-between capturing the diurnal cycle (6-hourly, standard synoptic sampling)
-and download/runtime cost. Extend YEARS / add more hours if a finer
-climatology is wanted later.
-
-Run with the isolated 'herbie' conda env (not the shared system/user python):
-  /private/home/esteiger/miniconda3/envs/herbie/bin/python3 download_hrrr_wind.py
+Input:  HRRR analyses (fxx=0), fetched by Herbie
+Output: BASE_DIR/wind/hrrr/hrrr_wind_raw_points.csv
+        (datetime, lat, lon, u10, v10). u/v are grid-relative; run
+        rotate_hrrr_wind.py next.
+Env:    'herbie' conda env
+Usage:  /private/home/esteiger/miniconda3/envs/herbie/bin/python3 download_hrrr_wind.py
 """
 
 import os
@@ -27,15 +16,17 @@ import os
 import pandas as pd
 from herbie import FastHerbie
 
-# Buffered bbox matching the GWA download (0-360 longitude convention for HRRR)
+# Buffered study-area bbox; HRRR longitudes are 0-360
 LON_MIN, LON_MAX = 239.25, 239.95   # -120.75 to -120.05
 LAT_MIN, LAT_MAX = 34.35, 34.95
 
-YEARS = [2022, 2023, 2024]
-BLOOM_MONTHS = [6, 7, 8, 9]
+# 2015-2022: pre-turbine (Strauss Wind Farm began operating 2023)
+YEARS = list(range(2015, 2023))
+BLOOM_MONTHS = [6, 7, 8, 9, 10]   # Gaviota tarplant flowering season, June-October
 HOURS = [0, 6, 12, 18]
 
-OUT_DIR = "/private/groups/meyerlab/esteiger/wind/hrrr"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+OUT_DIR = f"{BASE_DIR}/wind/hrrr"
 os.makedirs(OUT_DIR, exist_ok=True)
 RAW_POINTS_CSV = os.path.join(OUT_DIR, "hrrr_wind_raw_points.csv")
 
@@ -61,16 +52,24 @@ def extract_bbox(dt, ds):
     })
 
 
-def fetch_month(year, month):
-    """One FastHerbie call per (year, month) chunk (~120 timesteps) -- keeps
-    each call's combined full-CONUS xarray Dataset (~2 GB/chunk) bounded,
-    rather than materializing all ~1460 timesteps (~25+ GB) in one merge."""
-    datetimes = build_datetimes(year, month)
-    FH = FastHerbie(datetimes, model="hrrr", product="sfc", fxx=[0], max_threads=50)
-    ds = FH.xarray(":[U|V]GRD:10 m", max_threads=50)
+def fetch_datetimes(datetimes):
+    """Fetch timesteps in one FastHerbie call. Returns the extracted frames
+    and the datetimes that came back missing."""
+    try:
+        FH = FastHerbie(datetimes, model="hrrr", product="sfc", fxx=[0], max_threads=50)
+        ds = FH.xarray(":[U|V]GRD:10 m", max_threads=50)
+    except Exception as e:   # one bad file fails the whole chunk, so retry one at a time
+        print(f"  chunk failed ({type(e).__name__}: {e})")
+        if len(datetimes) == 1:
+            return [], datetimes
+        frames, missing = [], []
+        for dt in datetimes:
+            got, miss = fetch_datetimes([dt])
+            frames.extend(got)
+            missing.extend(miss)
+        return frames, missing
 
-    frames = []
-    n_ok, n_fail = 0, 0
+    frames, missing = [], []
     for dt in datetimes:
         try:
             sub = ds.sel(time=dt) if "time" in ds.dims else ds
@@ -79,17 +78,37 @@ def fetch_month(year, month):
         df = extract_bbox(dt, sub)
         if df is not None:
             frames.append(df)
-            n_ok += 1
         else:
-            n_fail += 1
-    return frames, n_ok, n_fail
+            missing.append(dt)
+    return frames, missing
+
+
+def fetch_month(year, month, attempts=4):
+    """Fetch a month, retrying failed timesteps up to `attempts` times."""
+    frames, todo = [], build_datetimes(year, month)
+    for _ in range(attempts):
+        got, todo = fetch_datetimes(todo)
+        frames.extend(got)
+        if not todo:
+            break
+    return frames, len(build_datetimes(year, month)) - len(todo), len(todo)
 
 
 def main():
-    all_frames = []
+    # Resume: months already saved in full are kept and skipped.
+    all_frames, done = [], set()
+    if os.path.exists(RAW_POINTS_CSV):
+        prev = pd.read_csv(RAW_POINTS_CSV, parse_dates=["datetime"])
+        ym = list(zip(prev["datetime"].dt.year, prev["datetime"].dt.month))
+        n_saved = prev.groupby(pd.Series(ym, index=prev.index))["datetime"].nunique()
+        done = {k for k, n in n_saved.items()
+                if k[0] in YEARS and k[1] in BLOOM_MONTHS and n == len(build_datetimes(*k))}
+        all_frames.append(prev[[k in done for k in ym]])
     total_ok, total_fail = 0, 0
     for year in YEARS:
         for month in BLOOM_MONTHS:
+            if (year, month) in done:
+                continue
             print(f"=== {year}-{month:02d} ===")
             frames, n_ok, n_fail = fetch_month(year, month)
             all_frames.extend(frames)
@@ -97,7 +116,7 @@ def main():
             total_fail += n_fail
             print(f"  {n_ok} ok, {n_fail} failed/missing "
                   f"(running total: {total_ok} ok, {total_fail} failed)")
-            # Write incrementally so a partial run still leaves usable output.
+            # Written after each month so an interrupted run can resume.
             pd.concat(all_frames, ignore_index=True).to_csv(RAW_POINTS_CSV, index=False)
 
     print(f"\nSaved raw (u10,v10) points -> {RAW_POINTS_CSV} "

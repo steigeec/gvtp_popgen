@@ -108,6 +108,13 @@ cat("Dosage matrix:", nrow(dosage), "individuals x", ncol(dosage), "SNPs\n")
 # ── Read environmental data ──────────────────────────────────────────────────
 env <- fread(env_file, header = TRUE, sep = "\t")
 env$SampleID <- as.character(env$SampleID)
+# 13 individuals have untrustworthy coordinates (Location="Strauss" but
+# Clusters assigned to Point_Conception/VAFB_Lion_Head; see
+# gvtp_popgen/wind/wind_aem_rda_hybrid.R) -- excluded throughout, including
+# from allele polarization
+BAD_COORD_IDS <- c("4548", "4549", "4550", "4551", "4552", "4553", "4554",
+                   "4555", "4556", "4557", "4559", "4561", "4562")
+env <- env[!env$SampleID %in% BAD_COORD_IDS, ]
 
 env_match <- match(rownames(dosage), env$SampleID)
 matched <- !is.na(env_match)

@@ -2,8 +2,6 @@
 
 #SBATCH --job-name=launch_heatmapLD
 #SBATCH --partition=long    
-#SBATCH --mail-type=BEGIN,END,FAIL          
-#SBATCH --mail-user=esteiger@ucsc.edu 
 #SBATCH --nodes=4    	
 #SBATCH --ntasks=30                 # 10 threads, 30 jobs
 #SBATCH --mem=100gb                     # 5gb per job * 

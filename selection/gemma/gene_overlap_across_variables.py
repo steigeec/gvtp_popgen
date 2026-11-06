@@ -211,12 +211,22 @@ def main():
     ax.set_ylim(-2.9, 2.9)
     ax.set_aspect("equal")
     ax.axis("off")
-    ax.set_title("Candidate gene overlap across environmental variables\n"
-                  f"(max pairwise environmental Pearson r = 0.54; gene universe n={gene_universe_n})",
-                  fontsize=11)
-    fig.tight_layout()
-    fig.savefig(f"{GEMMA_DIR}/gene_overlap_venn.png", dpi=200)
-    print(f"Wrote {GEMMA_DIR}/gene_overlap_venn.png")
+    # no title (context goes in the caption); cropped closely to the drawing
+    print(f"Venn context for the caption: max pairwise environmental Pearson r = 0.54; "
+          f"gene universe n={gene_universe_n}")
+    # the (hidden) axes are larger than the drawing, so trim the saved image to
+    # its non-white content plus a small margin
+    from PIL import Image, ImageChops
+    png = f"{GEMMA_DIR}/gene_overlap_venn.png"
+    fig.savefig(png, dpi=200)
+    img = Image.open(png).convert("RGB")
+    box = ImageChops.difference(img, Image.new("RGB", img.size, "white")).getbbox()
+    pad = 12
+    img = img.crop((max(box[0] - pad, 0), max(box[1] - pad, 0),
+                    min(box[2] + pad, img.width), min(box[3] + pad, img.height)))
+    img.save(png)
+    img.save(f"{GEMMA_DIR}/gene_overlap_venn.jpg", quality=95)
+    print(f"Wrote {png} and .jpg ({img.width} x {img.height} px)")
 
 
 if __name__ == "__main__":

@@ -2,8 +2,6 @@
 
 #SBATCH --job-name=blast_chunk
 #SBATCH --partition=long
-#SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=esteiger@ucsc.edu
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4gb
