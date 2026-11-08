@@ -3,7 +3,10 @@
 # from the Overpass API, for the wind maps (windscape_composite_figure.R).
 #
 # Output: BASE_DIR/env/coastline/osm_coastline_study_area.gpkg
-# Env:    internet access (login node), GDAL (windninja conda env)
+# Conda env: windninja
+#   conda create -n windninja -c conda-forge windninja=3.13.0.1
+#   (also provides GDAL: gdalwarp, gdal_translate, gdallocationinfo)
+# Needs internet access (login node).
 # Usage:  bash build_coastline.sh
 set -euo pipefail
 

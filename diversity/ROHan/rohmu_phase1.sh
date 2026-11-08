@@ -1,12 +1,9 @@
 #!/bin/bash
-# =============================================================================
-# rohmu_phase1.sh — SLURM array: ROHan pass 1 (MCMC het estimation)
-#
-# Each array task runs a single pass-1 job (one sample at one depth).
-# Task list is read from rohmu_calibration/phase1_tasks.tsv, written by
-# estimate_rohmu.sh.  Submit via estimate_rohmu.sh or manually:
+# rohmu_phase1.sh
+# SLURM array, ROHan pass 1 (MCMC) for rohmu calibration, one sample at one
+# depth per task from rohmu_calibration/phase1_tasks.tsv. Submit via
+# estimate_rohmu.sh or:
 #   sbatch --array=1-N rohmu_phase1.sh
-# =============================================================================
 
 #SBATCH --job-name=rohmu_p1
 #SBATCH --partition=long
@@ -18,10 +15,12 @@
 
 set -euo pipefail
 
-ROHAN=/private/groups/meyerlab/esteiger/software/rohan/bin/rohan
-REF=/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked
-SCAFFOLDS=/private/groups/meyerlab/esteiger/diversity/ROH/ROHan/scaffolds_1mb_names.txt
-TASK_FILE=/private/groups/meyerlab/esteiger/diversity/ROH/ROHan/rohmu_calibration/phase1_tasks.tsv
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+ROHAN=${BASE_DIR}/software/rohan/bin/rohan
+REF=${BASE_DIR}/genome/DEINVI_genome.fasta.masked
+SCAFFOLDS=${BASE_DIR}/diversity/ROH/ROHan/scaffolds_1mb_names.txt
+TASK_FILE=${BASE_DIR}/diversity/ROH/ROHan/rohmu_calibration/phase1_tasks.tsv
 
 LINE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$TASK_FILE")
 IFS=$'\t' read -r prefix bam chains <<< "$LINE"

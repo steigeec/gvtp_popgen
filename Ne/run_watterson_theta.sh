@@ -8,12 +8,18 @@
 #SBATCH --error=/private/groups/meyerlab/esteiger/demography/ANGSD-Ne/logs/%x_%a.err
 #SBATCH --array=0-5
 
+# Per-population Watterson's theta: realSFS saf2theta + thetaStat do_stat, using
+# the folded SFS from the heterozygosity run (pop_het.sh) as prior.
+# Usage: sbatch run_watterson_theta.sh (array over POPS); then summarize_watterson_theta.sh
+
 set -euo pipefail
 
-MISC=/private/groups/meyerlab/esteiger/software/angsd_dev/misc
-SAFDIR=/private/groups/meyerlab/esteiger/SAF/population
-MLDIR=/private/groups/meyerlab/esteiger/diversity/He/population
-OUTDIR=/private/groups/meyerlab/esteiger/demography/ANGSD-Ne
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+MISC=${BASE_DIR}/software/angsd_dev/misc
+SAFDIR=${BASE_DIR}/SAF/population
+MLDIR=${BASE_DIR}/diversity/He/population
+OUTDIR=${BASE_DIR}/demography/ANGSD-Ne
 CORES=${SLURM_CPUS_PER_TASK:-8}
 
 POPS=(arguello cdfw conception Dangermond lionhead strauss)
@@ -23,9 +29,7 @@ cd "$OUTDIR"
 
 echo "[$(date)] Starting Watterson's theta pipeline for population: $POP"
 
-# 1. Folded global SFS: reuse the one already computed for heterozygosity
-#    (pop_het.sh: realSFS <pop>.saf.idx -fold 1), since it's the identical
-#    SAF file + identical folded-EM call we would otherwise repeat here.
+# 1. Folded global SFS: same SAF and realSFS -fold 1 call as pop_het.sh, so reuse it
 SFS="${OUTDIR}/${POP}.folded.sfs"
 cp "${MLDIR}/${POP}.ml" "$SFS"
 echo "[$(date)] Step 1: reused existing folded SFS from ${MLDIR}/${POP}.ml -> $SFS"

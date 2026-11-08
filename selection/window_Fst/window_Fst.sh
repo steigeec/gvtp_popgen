@@ -1,4 +1,5 @@
 #!/bin/bash
+# Sliding-window Fst (50 kb windows, 10 kb step) for every population pair, then plot with plot_window_Fst.R.
 
 #SBATCH --job-name=window_Fst
 #SBATCH --partition=long
@@ -8,12 +9,14 @@
 #SBATCH --output=window_Fst_%j.log
 
 # === Paths ===
-# .ml and .fst.idx files are built by /private/groups/meyerlab/esteiger/gvtp_popgen/structure/calculate_Fst_pairwisepop.sh
-SCRIPT_DIR="/private/groups/meyerlab/esteiger/gvtp_popgen/selection/window_Fst"
-FSTDIR="/private/groups/meyerlab/esteiger/structure/Fst/populations/pairwise_auto"
+# .ml and .fst.idx files are built by BASE_DIR/gvtp_popgen/structure/calculate_Fst_pairwisepop.sh
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+SCRIPT_DIR="${BASE_DIR}/gvtp_popgen/selection/window_Fst"
+FSTDIR="${BASE_DIR}/structure/Fst/populations/pairwise_auto"
 PAIR_TABLE="${FSTDIR}/pairwise_Fst_populations.txt"
-OUTDIR="/private/groups/meyerlab/esteiger/selection/window_Fst"
-RS="/private/groups/meyerlab/esteiger/software/angsd_dev/misc/realSFS"
+OUTDIR="${BASE_DIR}/selection/window_Fst"
+RS="${BASE_DIR}/software/angsd_dev/misc/realSFS"
 
 mkdir -p "${OUTDIR}"
 

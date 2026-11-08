@@ -1,31 +1,20 @@
 #!/usr/bin/env python3
 """
 Summarize read-level inversion-breakpoint evidence on DEINVI_00006 from
-breakpoint_reads.sh output, contrasting PC1/PC2 groups chosen by
+breakpoint_reads.sh output, contrasting the PC1/PC2 groups chosen by
 breakpoint_samples.py.
 
-Evidence (MAPQ >= 20, ends > 20 kb apart on DEINVI_00006):
-  PAIR  -- same-strand read pairs (both mates MAPQ >= 20)
-  SPLIT -- split reads whose parts map on opposite strands
-Each piece of evidence links two positions; both ends are binned (BIN bp).
-
-Mis-mapped pairs in repeats are common and appear in every group, so the
-test is about INDIVIDUALS, not reads: for each linked pair of bins, count how
-many individuals in each group carry >= 1 supporting read. A real breakpoint
-should be supported by many individuals of the group carrying the
-non-reference arrangement (and of heterozygotes), and by ~none of the other
-homozygous group.
+Evidence (MAPQ >= 20, ends > 20 kb apart): PAIR = same-strand read pairs,
+SPLIT = split reads with parts on opposite strands. Both ends are binned (BIN
+bp), and for each linked pair of bins the number of individuals per group with
+>= 1 supporting read is counted.
 
 Outputs (OUT_DIR):
-  links_<block>.tsv     every link with support in >= MIN_IND individuals of
-                        any group: per-group individual counts, reads, type
-  group_specific.tsv    links where one homozygous group's individuals carry
-                        support significantly more often than the other's
-                        (one-sided Fisher's exact test on individuals with /
-                        without >= 1 supporting read, Bonferroni over all
-                        links x 2 directions in the block), all blocks
-  links_<block>.jpg     link positions (end 1 vs end 2) per group, point size
-                        = supporting individuals; candidate breakpoints marked
+  links_<block>.tsv     links supported by >= MIN_IND individuals of any group
+  group_specific.tsv    links where one homozygous group carries support more
+                        often than the other (one-sided Fisher's exact test,
+                        Bonferroni over links x 2 directions per block)
+  links_<block>.jpg     link positions (end 1 vs end 2) per group
 """
 
 import glob
@@ -38,9 +27,11 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-OUT_DIR = "/private/groups/meyerlab/esteiger/inversions/breakpoints"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+OUT_DIR = f"{BASE_DIR}/inversions/breakpoints"
 BIN = 50_000
-MIN_IND = 3                 # links shown/kept need >= this many individuals in some group
+MIN_IND = 3                 # min. supporting individuals in some group
 ALPHA = 0.01                # Bonferroni-corrected significance for group-specific links
 MIN_FRAC = 0.2              # ... and >= this share of the supporting group's individuals
 CANDIDATES = [15.8, 21.2, 24.1, 27.4, 29.0, 30.4, 37.5, 45.3, 49.3]   # Mb
@@ -97,8 +88,7 @@ def main():
         links["span_Mb"] = links.hi_Mb - links.lo_Mb
         links.to_csv(f"{OUT_DIR}/links_{block}.tsv", sep="\t", index=False)
 
-        # group-specific: individuals of one homozygous group carry support
-        # significantly more often than those of the other
+        # group-specific links
         n_grp = bsel.group.value_counts()
         for g in ["A", "Het", "B"]:
             links[f"{g}_frac"] = links[g] / n_grp.get(g, np.nan)

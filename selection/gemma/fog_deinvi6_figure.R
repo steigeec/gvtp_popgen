@@ -1,33 +1,25 @@
 #!/usr/bin/env Rscript
 
 # Two-panel greyscale figure for the DEINVI_00006 fog outlier peak
-# (19 SNPs, 49,031,257-49,146,391; GNS1/SNF1, ~0.6 Mb from the chr 6
-# centromere -- not an inversion):
-#   Left  – variable's germination-year values by germination cohort
-#   Right – mean favorable-allele dosage at the DEINVI_00006 peak
+# (19 SNPs, 49,031,257-49,146,391; GNS1/SNF1, ~0.6 Mb from the chr 6 centromere):
+#   Left:  variable's germination-year values by germination cohort
+#   Right: mean favorable-allele dosage at the DEINVI_00006 peak
 # Plus a 3-panel map figure: per-stand frequency of the fog-favorable allele
 # at the peak (black slice; favorable = allele whose coverage-adjusted dosage
 # rises with long-term fog across all samples), one equal-sized pie per
 # stand, over a Tranquillon Mountain contour basemap, one panel per
 # germination year.
 #
-# Currently run for fog only — of BIO15/BIO18/fog, fog is the only variable
-# whose 40000_3 outliers still include a peak in the chr 6 pericentromeric block (43-50Mb
-# on DEINVI_00006); BIO18 never overlapped it, and BIO15's peak there
-# (previously 66 SNPs @ 48860682-49175215) dropped out of its outlier set
-# entirely as of the 2026-07-20 outlier re-call — its only chr6 outlier
-# peak now sits at ~3.44Mb, unrelated to this peak. Re-add BIO15 to
-# VAR_CONFIG below if a future outlier re-call brings back a peak near
-# PEAK_SPAN.
+# Run for fog only: of BIO15/BIO18/fog, only fog has 40000_3 outliers in this peak.
 #
-# The map figure is Strauss-only: it's the one site sampled across all
-# three years (2020/2021/2022); the other six sites in env_var.txt were
-# only sampled in 2020, so they can't contribute to a per-year comparison.
+# The map figure is Strauss-only, the one site sampled in all three years (2020-2022).
 #
 # Usage: Rscript fog_deinvi6_figure.R [var_name ...]
 #   var_name: one or more of fog (default: fog)
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs")
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
+
+.libPaths(file.path(BASE_DIR, "software/R_libs"))
 library(data.table)
 library(ggplot2)
 library(dplyr)
@@ -37,11 +29,11 @@ library(sf)
 library(scatterpie)
 library(ggspatial)
 
-base_dir     <- "/private/groups/meyerlab/esteiger/selection/gemma"
-env_file     <- "/private/groups/meyerlab/esteiger/env_var.txt"
-field_file   <- "/private/groups/meyerlab/esteiger/field_data.txt"
+base_dir     <- file.path(BASE_DIR, "selection/gemma")
+env_file     <- file.path(BASE_DIR, "env_var.txt")
+field_file   <- file.path(BASE_DIR, "field_data.txt")
 scaffold_map <- file.path(base_dir, "scaffold_snp_map.txt")
-dem_file     <- "/private/groups/meyerlab/esteiger/env/tranquillon_mountain_30m.dem"
+dem_file     <- file.path(BASE_DIR, "env/tranquillon_mountain_30m.dem")
 
 box_fill <- "grey60"
 
@@ -52,9 +44,7 @@ base_theme <- theme_classic() +
         axis.line        = element_line(color = "black"),
         panel.border     = element_blank())
 
-# Per-variable env-column name and axis label for the left panel. Both
-# variables use the same "<var>_germ_yr" column naming convention in
-# env_var.txt.
+# Per-variable env_var.txt column ("<var>_germ_yr") and axis label for the left panel
 VAR_CONFIG <- list(
   fog = list(long_term_col = "fog", germ_yr_col = "fog_germ_yr",
              y_label = "Fog (days per month)")
@@ -70,13 +60,11 @@ var_names <- if (length(args) >= 1) args else names(VAR_CONFIG)
 dem    <- rast(dem_file)
 contour_sf <- st_as_sf(as.contour(dem, nlevels = 15))
 
-# OHANA_order (stand-of-plants grouping) lives in field_data.txt, not
-# env_var.txt — join it in by SampleID.
+# OHANA_order (stand) comes from field_data.txt, joined by SampleID
 field_dt <- fread(field_file, select = c("SampleID", "OHANA_order"))
 field_dt$SampleID <- as.character(field_dt$SampleID)
 
-# Zoomed to the Strauss individuals themselves (range of their Lat/Long,
-# +buffer) rather than the full DEM extent.
+# Map extent: range of Strauss Lat/Long plus a buffer
 STRAUSS_BUFFER <- 300     # m
 PIE_RADIUS     <- 150     # m; one equal-sized pie per OHANA_order stand
 JITTER_RANGE   <- 40      # m; tiny offset so co-located stands separate
@@ -168,9 +156,8 @@ for (var_name in var_names) {
   env         <- fread(env_file, header = TRUE, sep = "\t")
   env$SampleID <- as.character(env$SampleID)
   # 13 individuals have untrustworthy coordinates (Location="Strauss" but
-  # Clusters assigned to Point_Conception/VAFB_Lion_Head; see
-  # gvtp_popgen/wind/wind_aem_rda_hybrid.R) -- excluded throughout, including
-  # from allele polarization
+  # Clusters assigned to Point_Conception/VAFB_Lion_Head); excluded throughout,
+  # including from allele polarization
   BAD_COORD_IDS <- c("4548", "4549", "4550", "4551", "4552", "4553", "4554",
                      "4555", "4556", "4557", "4559", "4561", "4562")
   env         <- env[!env$SampleID %in% BAD_COORD_IDS, ]
@@ -240,11 +227,7 @@ for (var_name in var_names) {
   cat("Saved:", out_path, "\n")
 
   # ── Alternate panel B: genotype-proportion stacked bar chart ─────────────────
-  # pk_score isn't perfectly discrete (imputation/genotype-likelihood noise on
-  # some individuals — see conversation), but SNPs in this peak are in tight
-  # enough LD that it clusters right around 0/1/2 copies of the favorable
-  # allele; round() to bin each individual into one of the 3 diploid genotype
-  # classes at this locus.
+  # pk_score clusters near 0/1/2 copies (SNPs in tight LD); round() bins individuals into genotypes
   geno_df <- df %>%
     mutate(genotype = factor(round(pk_score), levels = c(0, 1, 2),
                               labels = c("Other/Other", "Heterozygous",
@@ -270,9 +253,7 @@ for (var_name in var_names) {
 
   # ── 3-panel map: per-OHANA_order-stand fog-favorable allele frequency at
   # the peak by year, on the DEM basemap, zoomed to Strauss ────────────────
-  # Each stand gets its own pie: favorable = mean(pk_score) / 2 (dosage is
-  # 0/1/2 copies of the fog-favorable allele, polarized above), other =
-  # 1 - favorable. Stands come from field_data.txt (merged/corrected).
+  # One pie per stand: favorable = mean(pk_score) / 2, other = 1 - favorable
   indiv_df <- df
   indiv_df$Lat         <- env_matched$Lat[strauss_idx]
   indiv_df$Long        <- env_matched$Long[strauss_idx]
@@ -287,9 +268,7 @@ for (var_name in var_names) {
   cat("\n--- DEINVI_00006 fog-favorable allele frequency by stand/year (", var_name, ") ---\n")
   print(stand_df)
 
-  # Same small jitter per stand across all three years, so a stand doesn't
-  # jump around panel-to-panel — just nudged enough to separate stands that
-  # would otherwise plot on top of each other.
+  # Same jitter per stand in all three years
   set.seed(1)
   xy <- st_coordinates(st_transform(st_as_sf(stand_df, coords = c("Long", "Lat"), crs = 4326), crs(dem)))
   stand_df$X <- xy[, 1]; stand_df$Y <- xy[, 2]
@@ -340,10 +319,7 @@ for (var_name in var_names) {
   print(fisher.test(geno_tab, simulate.p.value = TRUE, B = 1e5))
 
   # ── Directed test: is dosage higher specifically in the highest-fog year? ───
-  # One-sided (not just "do years differ") since the hypothesis has a
-  # direction: the favorable allele should be more common in the year with
-  # more germination-season fog. High-fog year determined from the data
-  # itself (mean germ_env per year), not hardcoded.
+  # One-sided; the high-fog year is the year with the highest mean germ_env
   year_means <- df %>% group_by(Year) %>% summarise(mean_germ_env = mean(germ_env), .groups = "drop")
   cat("\n--- Mean", germ_yr_col, "by Year (", var_name, ") ---\n")
   print(year_means)

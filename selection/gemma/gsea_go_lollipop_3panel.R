@@ -1,32 +1,22 @@
 #!/usr/bin/env Rscript --vanilla
 
-# Three-panel, single-page version of gsea_go_lollipop.R: nominally enriched
-# GO terms (gsea_go_stricter_nominal.R output) for fog (A), precipitation
-# seasonality / BIO15 (B) and summer precipitation / BIO18 (C), side by side.
-#
-# Encodings: lollipop length = -log10 p; colour (of both the lollipop and its
-# term label) = functional theme, assigned separately for each panel
-# (PANEL_THEMES, by GO ID; unthemed terms grey). A theme used in more than one
-# panel keeps the same colour (THEME_COLORS). Term size and ontology are not
-# encoded. Changes to fit ~100 terms on one page:
-#   - panels side by side, each with its own theme legend below it (listing
-#     only that panel's themes);
-#   - term names wrapped at WRAP_CHARS characters and set at TEXT_PT;
-#   - optional standard abbreviations of long, recurring words (ABBREVIATE;
-#     list them in the caption);
-#   - TOP_N limits terms per panel (Inf = all);
-#   - each term name is followed by its GO ID in parentheses (SHOW_GO_ID).
+# Lollipop plot of nominally enriched GO terms (gsea_go_stricter_nominal.R output)
+# for fog (A), precipitation seasonality / BIO15 (B) and summer precipitation /
+# BIO18 (C), side by side on one page. Length = -log10 p; colour = functional
+# theme (PANEL_THEMES, by GO ID; unthemed terms grey).
 #
 # Usage: Rscript gsea_go_lollipop_3panel.R [tag] [top_n]
 #   tag: "" (default) or e.g. "sunflower", matching gsea_go_stricter_nominal.R
 # Writes: GO_lollipop_3panel<_tag>.pdf / .png in the gemma directory
 
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
+
 suppressMessages({
-    .libPaths("/private/groups/meyerlab/esteiger/software/R_libs")
+    .libPaths(file.path(BASE_DIR, "software/R_libs"))
     library(dplyr); library(ggplot2); library(patchwork); library(stringr)
 })
 
-GEMMA_DIR  <- "/private/groups/meyerlab/esteiger/selection/gemma"
+GEMMA_DIR  <- file.path(BASE_DIR, "selection/gemma")
 PANELS     <- c(fog = "A  Fog", BIO15 = "B  Precipitation seasonality", BIO18 = "C  Summer precipitation")
 # Functional themes per panel (by GO ID); interpretive groupings of nominal
 # terms, assigned only where the term name points clearly to the theme
@@ -51,8 +41,7 @@ PANEL_THEMES <- list(
         "Redox and detoxification"               = c("GO:1990748", "GO:0046185", "GO:1901654"),
         "Developmental timing"                   = c("GO:0045544", "GO:0048575"),
         "Osmoregulation and leaf surface traits" = c("GO:1904276")))
-# one colour per theme, shared across panels (Okabe-Ito; yellow darkened to
-# read as text)
+# one colour per theme, shared across panels (Okabe-Ito; yellow darkened for text)
 THEME_COLORS <- c("Cell wall and carbohydrate remodeling"    = "#E69F00",
                   "Altered light perception"                 = "#56B4E9",
                   "Osmoregulation and leaf surface traits"   = "#009E73",
@@ -62,8 +51,8 @@ THEME_COLORS <- c("Cell wall and carbohydrate remodeling"    = "#E69F00",
                   "Chloroplast function and photoprotection" = "#9E8B00",
                   "Redox and detoxification"                 = "#000000",
                   "Other"                                    = "grey70")
-OTHER_TEXT <- "grey50"     # label colour for unthemed terms (lighter than black, which is a theme)
-PAGE_W_IN  <- 8.5      # wider than tall; at 183-mm (7.2-in) print width text scales to ~85%
+OTHER_TEXT <- "grey50"     # label colour for unthemed terms (black is a theme colour)
+PAGE_W_IN  <- 8.5      # at 183 mm print width, text scales to ~85%
 PAGE_H_IN  <- 7.9
 TEXT_PT    <- 6.5      # term-name font size (journal minimum is 5-7 pt)
 WRAP_CHARS <- 48

@@ -8,7 +8,9 @@
 ##   population and individual pairwise Fst; field_data.txt
 ## Outputs: windscape/composite_panels/panel_[a-d].jpg,
 ##   windscape/windscape_connectivity_composite.jpg
-## R libraries: R_libs_windscape, R_libs (windscape, terra, jpeg)
+## R libraries: windscape 2.0.0 and terra 1.9-50 (CRAN) in BASE_DIR/software/R_libs_windscape,
+##   installed with install.packages(c("windscape", "terra"), lib = <that dir>);
+##   jpeg from BASE_DIR/software/R_libs
 ## Usage: Rscript windscape_composite_figure.R
 ##
 ## Scatter plots are unadjusted, so they include isolation by distance.

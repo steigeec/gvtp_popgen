@@ -1,26 +1,17 @@
 #!/usr/bin/env Rscript
 #
-# Re-runs the same Bonferroni / 40000_3 peak-filtering logic as
-# find_outliers.R, then labels EVERY gene flagged In_40000_3_Peak == "Yes"
-# in <var_name>/gene_summary_<var_name>.tsv (i.e. every LD-curated
-# candidate gene actually tied to a retained peak for this variable, not
-# a subset chosen by adaptive-role/GO-term evidence or by picking one
-# winner per peak) with its short acronym, falling back to its ortholog
-# name when no acronym is resolved; genes with neither are left
-# unlabeled. All labels are plain black -- no GO-term color-coding or
-# legend (dropped per explicit request: the plots are dense enough with
-# every retained-peak gene shown that a color scheme added more noise
-# than signal, and the legend also happened to trigger a genuine ggrepel/
-# grid rendering bug the one time it had real terms to draw — see git
-# history for the crash this replaced). Label text is deliberately small
-# since a peak can now carry several labels rather than just one. Labels
-# are pinned near the top of the plot (small vertical stagger to avoid
-# overlap) with a thin segment pointing down to the actual peak, rather
-# than sitting on top of the peak itself.
+# Manhattan plots of the 40000_3 retained peaks (same Bonferroni and window filtering as
+# find_outliers.R), labelling every candidate gene in <var_name>/gene_summary_<var_name>.tsv
+# that SnpEff assigned to a retained SNP, with its acronym or else ortholog name (genes with
+# neither are unlabelled). Labels sit near the top of the plot with a segment to the peak.
 #
 # The inversion region (DEINVI_00006:43-50Mb) is excluded from the whole-
 # genome plot's labels and shown only on the DEINVI_00006 scaffold-level
 # plot.
+#
+# Usage: Rscript annotated_manhattan.R <pheno_num> <var_name>  (run from the gemma directory)
+
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
 
 args <- commandArgs(trailingOnly=TRUE)
 pheno_num <- args[1]
@@ -28,7 +19,7 @@ var_name  <- args[2]
 
 dir.create(var_name, showWarnings=FALSE, recursive=TRUE)
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs")
+.libPaths(file.path(BASE_DIR, "software/R_libs"))
 library(bit64)
 library(data.table)
 library(dplyr)
@@ -56,7 +47,7 @@ gemma <- read.table(paste0("output/pheno", pheno_num, "_lmm_results.assoc.txt"),
 names(gemma)[1:3] <- c("Chromosome", "SNP", "Position")
 print(paste("No rows in input:", nrow(gemma)))
 
-# Genomic control — identical to find_outliers.R
+# Genomic control, as in find_outliers.R
 chisq_obs <- qchisq(gemma$p_lrt, df=1, lower.tail=FALSE)
 lambda <- median(chisq_obs, na.rm=TRUE) / qchisq(0.5, df=1)
 print(paste("Lambda:", round(lambda, 3)))
@@ -96,7 +87,7 @@ if (nrow(pks) == 0) {
   quit(save="no", status=0)
 }
 
-# Sliding-window retention: keep SNPs with >= 2 neighbours within 40kb — identical to find_outliers.R
+# Sliding-window retention, as in find_outliers.R
 win <- 40000; step <- 20000
 win_table <- list()
 for (ch in unique(pks$Chromosome)) {
@@ -151,7 +142,7 @@ if (nrow(retained) == 0) {
 }
 retained$out <- "out"
 
-# Add cumulative genomic position columns — identical to find_outliers.R
+# Add cumulative genomic position columns, as in find_outliers.R
 add_positions <- function(man) {
   chroms <- man %>%
     group_by(Chromosome) %>%
@@ -177,58 +168,25 @@ man    <- res_ret$man
 chroms <- res_ret$chroms
 
 # ── Gene name/acronym lookup ───────────────────────────────────────────────
-# Per-variable sheet (built by compile_gene_summary.py from the UNFILTERED
-# LD-curated candidate gene list), filtered to In_40000_3_Peak == "Yes" --
-# every gene actually tied to a retained (Bonferroni + 40kb-window-
-# density-filtered) peak for this variable, not a subset chosen by
-# adaptive-role/GO-term evidence. Label = Acronym when resolved, else the
-# Ortholog name when present; genes with neither are excluded entirely
-# (no raw-gene-id fallback).
+# Label = Acronym, else cleaned ortholog name; genes with neither are dropped.
 gene_summary_file <- file.path(var_name, paste0("gene_summary_", var_name, ".tsv"))
 if (file.exists(gene_summary_file)) {
   gene_summary <- read.table(gene_summary_file, header=TRUE, sep="\t",
                               quote="", comment.char="", stringsAsFactors=FALSE)
-  # Every LD-curated candidate gene for this variable, not just the ones
-  # flagged In_40000_3_Peak == "Yes" -- that flag comes from a separately
-  # precomputed gene_list_<var>_40000_3.txt and doesn't reliably agree
-  # with which genes actually have a retained-SNP anchor in THIS script's
-  # own live retained-SNP recomputation below (confirmed: several genes
-  # the user manually identity-corrected turned out to be flagged "No"
-  # here despite genuinely mapping to a retained peak via snp_to_gene).
-  # top_snp_per_gene's snp_to_gene-based matching against the live
-  # `retained` set is what actually determines inclusion -- a gene with
-  # no retained-SNP anchor is silently dropped there regardless.
+  # All candidate genes; inclusion is decided by top_snp_per_gene (retained SNPs only),
+  # not the In_40000_3_Peak flag.
   genes <- gene_summary
   genes$Gene_Coordinates <- genes$Coordinates
-  # A bare Arabidopsis Genome Initiative locus tag (e.g. "At5g09550") isn't
-  # a real gene symbol -- it's an anonymous positional ID that happens to
-  # satisfy the digit-required acronym-extraction filter upstream, but
-  # conveys nothing informative on a plot label, so it's excluded here (and
-  # from Orthologs text below) exactly like "uncharacterized protein" is.
+  # Bare AGI locus tags (e.g. "At5g09550") are not used as labels
   is_agi_locus_id <- function(x) grepl("^At[0-9CM]G[0-9]+$", x, ignore.case = TRUE)
 
-  # Some Acronym values are pure punctuation/whitespace artifacts from
-  # upstream parsing (e.g. literal ";" or "; ; ; ; ;") — reject those, but
-  # keep legitimate symbols that happen to contain special characters
-  # (e.g. "C/VIF1", "EIF(ISO)4E") by requiring at least one alphanumeric.
+  # Reject Acronym values without any alphanumeric character (e.g. "; ; ;")
   has_acronym  <- !is.na(genes$Acronym)   & genes$Acronym   != "" & genes$Acronym   != "NA" &
                    grepl("[A-Za-z0-9]", genes$Acronym) & !is_agi_locus_id(genes$Acronym)
 
-  # Orthologs can be "; "-joined (up to 3 names); some of those are
-  # UniProt's generic auto-name for an uncharacterized locus ("AT2G25670
-  # protein", "Uncharacterized protein At4g32610") rather than a real gene
-  # name — strip those out part-by-part rather than rejecting the whole
-  # field, and use it as a label only if something informative remains.
-  # Bare classification/process sentences from eggNOG hits that carry no
-  # specific gene identity -- e.g. "floral organ abscission" (a GO
-  # Biological Process phrase, not a gene name) or "Belongs to the X
-  # family" (a UniProt-style classification sentence with nothing named).
-  # An exact-match list, not a keyword heuristic, since the full set of
-  # eggNOG-sourced Orthologs strings in this dataset is small and has
-  # been manually reviewed -- some superficially similar phrasings DO
-  # name something real ("Sorting and assembly machinery" = the SAM/TOB
-  # complex, "VQ motif" = a real plant protein family) and are
-  # deliberately NOT in this list.
+  # Orthologs can be "; "-joined; generic names ("AT2G25670 protein", "Uncharacterized
+  # protein ...") are dropped part by part. GENERIC_ORTHOLOG_EXACT: manually reviewed
+  # eggNOG strings that name no gene.
   GENERIC_ORTHOLOG_EXACT <- c(
     "floral organ abscission",
     "Mitochondrial protein",
@@ -242,10 +200,7 @@ if (file.exists(gene_summary_file)) {
     is_agi_locus_id(x) |
     x %in% GENERIC_ORTHOLOG_EXACT
   }
-  # Labels are placed with x fixed at the peak (direction = "y"), so a very
-  # wide label can run off the left/right edge of the panel regardless of
-  # vertical headroom — keep it to the single best (first-listed) ortholog
-  # name rather than joining up to 3, and hard-truncate as a last resort.
+  # Use only the first ortholog name, truncated, so labels stay inside the panel
   MAX_LABEL_CHARS <- 45
   clean_orthologs <- function(x) {
     if (is.na(x) || x == "" || x == "NA") return(NA_character_)
@@ -267,15 +222,8 @@ if (file.exists(gene_summary_file)) {
 }
 print(paste("Candidate genes for", var_name, "with a usable label (pre retained-SNP matching):", nrow(genes)))
 
-# ggrepel's own force-directed repulsion only nudges a label off the floor
-# when it directly collides with a neighbor — labels with modest x-gaps
-# between them get left sitting right at the floor, since that's their
-# closest allowed position to the real (much lower) data value. That reads
-# as "everything crammed on one line" once there are more than a handful
-# of labels. Deterministically assign each label to one of a few height
-# tiers (alternating by x-order, so x-adjacent labels land on different
-# tiers) via nudge_y, so the vertical room actually gets used; ggrepel
-# still does fine local adjustment from each tier's starting point.
+# Assign labels to height tiers alternating by x order (via nudge_y), so x-adjacent labels
+# start at different heights; ggrepel then adjusts locally.
 assign_tier_nudge <- function(lab_df, y_floor, y_ceiling, y_col, n_tiers = 3) {
   n <- nrow(lab_df)
   if (n == 0) return(numeric(0))
@@ -286,20 +234,9 @@ assign_tier_nudge <- function(lab_df, y_floor, y_ceiling, y_col, n_tiers = 3) {
   target_y - lab_df[[y_col]]
 }
 
-# For each gene, find the retained SNP with the highest -log10(p) that
-# SnpEff actually assigned it to -- via snp_to_gene_<var_name>.tsv (built
-# by build_snp_gene_map.py from outliers_<var>.ann.INFO), NOT a
-# coordinate-range overlap against the gene's own Coordinates span. A
-# coordinate-only check systematically misses every gene reached only
-# through the LD-curated intergenic assignment (curate_intergenic_by_ld.py)
-# -- SnpEff's upstream/downstream/intergenic flanking window commonly
-# extends several kb outside the gene's own coordinates, which is the
-# majority case here (most outlier SNPs are intergenic) and exactly why
-# select_peak_labels.R already made this same fix; annotated_manhattan.R
-# had inherited the older, narrower coordinate-overlap approach, which is
-# why the vast majority of genes flagged In_40000_3_Peak == "Yes" were
-# silently ending up unlabeled (41 qualifying genes for BIO15, only 10
-# actually plotted, before this fix).
+# For each gene, the retained SNP with the lowest p that SnpEff assigned to it
+# (snp_to_gene_<var_name>.tsv from build_snp_gene_map.py; most outlier SNPs are
+# intergenic, so coordinate overlap would miss most genes).
 snp_gene_file <- file.path(var_name, paste0("snp_to_gene_", var_name, ".tsv"))
 snp_gene <- read.table(snp_gene_file, header=TRUE, sep="\t", quote="", comment.char="",
                         stringsAsFactors=FALSE)
@@ -313,11 +250,7 @@ genes_for_snp <- function(scaffold, position) {
 }
 
 top_snp_per_gene <- function(genes, snps) {
-  # Match on Gene_ID -- the true key snp_to_gene_<var>.tsv uses -- not
-  # Gene_Name, which is only a display label and can differ from Gene_ID
-  # (e.g. Gene_ID "IDmodified-gene-78898" displays as Gene_Name
-  # "MSTRG.28211"; matching on Gene_Name silently failed for every such
-  # gene, since it never appears anywhere in snp_to_gene_<var>.tsv).
+  # Match on Gene_ID (Gene_Name is a display label and can differ)
   target_ids <- genes$Gene_ID
   # gene_id -> best (lowest-p) retained-SNP row seen so far
   best <- new.env()
@@ -357,23 +290,17 @@ top_snp_per_gene <- function(genes, snps) {
 retained_df <- as.data.frame(retained)
 candidates  <- top_snp_per_gene(genes, retained_df)
 
-# Putative inversion region — needed here (not just for the scaffold plot
-# below) so it can be excluded from the whole-genome plot's labels.
+# Putative inversion region (excluded from whole-genome plot labels)
 INV_SCAFFOLD <- "DEINVI_00006"
 INV_START <- 43000000
 INV_END   <- 50000000
 inv_chr <- scaf2chr[[INV_SCAFFOLD]]
 
-# ── Labels: every gene in `candidates` already passed the
-# In_40000_3_Peak == "Yes" filter above (applied to `genes` before
-# top_snp_per_gene was called), so no further per-peak winner-picking
-# happens here — a peak with N qualifying genes gets N labels, not one. ───
+# ── Labels: one per candidate gene (a peak can carry several) ──────────────
 label_cols <- c("Chromosome", "Position", "p_final", "Gene_Name", "Label", "has_acronym")
 labels <- if (nrow(candidates) > 0) unique(candidates[, label_cols]) else candidates[, label_cols]
 
-# Companion report: which labeled genes are showing an Orthologs-fallback
-# label rather than a real acronym — a ready-made worklist for manually
-# assigning acronyms to whatever's actually cluttering the plot.
+# Report of labelled genes that use an ortholog name instead of an acronym
 needs_acronym <- labels[!labels$has_acronym, c("Gene_Name", "Label")]
 write.table(needs_acronym[order(needs_acronym$Gene_Name), ],
             file.path(var_name, paste0("labeled_genes_needing_acronym_", var_name, ".txt")),
@@ -387,8 +314,7 @@ if (nrow(labels) > 0) {
 }
 print(paste("Genes labeled:", nrow(labels)))
 
-# Whole-genome plot excludes labels that fall inside the inversion window —
-# those are only shown on the DEINVI_00006 scaffold plot further below.
+# Labels inside the inversion window are shown only on the DEINVI_00006 scaffold plot
 main_labels <- labels
 if (!is.null(inv_chr) && nrow(labels) > 0) {
   in_inversion <- as.character(labels$Chromosome) == inv_chr &
@@ -399,15 +325,8 @@ if (!is.null(inv_chr) && nrow(labels) > 0) {
 # ── Plot: filtered (40000_3) peaks, gene labels pinned near the top ───────
 REPS <- round(length(levels(man$Chromosome)) / 2) + 1
 y_top <- max(-log10(man$p_final), na.rm = TRUE)
-# geom_text_repel's `ylim` only controls where it PLACES a label — it does
-# not feed back into ggplot's automatic axis-range calculation (that's
-# still based on each layer's original, un-repelled y aesthetic value), so
-# without an explicit ceiling here, labels pushed up near y_top get
-# clipped at the top edge of the panel instead of getting more headroom.
-# The panel itself gets extra headroom beyond the label ceiling (not just
-# the same value) because a label's rendered text glyph has real height
-# around its anchor point — clamping the anchor exactly at the panel edge
-# still let the tallest labels visually poke past it.
+# geom_text_repel's ylim does not extend the axis, so set the panel limit explicitly,
+# above the label ceiling to leave room for the text itself.
 y_label_ceiling <- y_top * 2.0
 y_panel_ceiling <- y_top * 4.0
 
@@ -424,19 +343,7 @@ p <- ggplot(man) +
   froggy_theme
 
 if (nrow(main_labels) > 0) {
-  # Labels pinned near the top of the plot (ylim floor, ceiling below the
-  # panel's own limit — see y_panel_ceiling note above). Pre-staggered
-  # across more height tiers than before (n_tiers=8, not the default 3) —
-  # every retained-peak gene is labeled now rather than just an evidence-
-  # selected subset, so there are routinely dozens of labels on one plot
-  # and 3 tiers left too many crammed on the same line — via nudge_y (see
-  # assign_tier_nudge) so the vertical room actually gets used, then
-  # ggrepel's own force does fine local adjustment from there (a high
-  # box.padding/force pair so it actively separates labels rather than
-  # settling for minimal spacing) — direction = "y" keeps them at each
-  # peak's own x position, so the connecting segment reads as a straight,
-  # thin line up from the peak. All labels are plain black (no GO-term
-  # color-coding or legend — dropped per explicit request).
+  # Labels near the top, staggered over 8 tiers; direction = "y" keeps each at its peak's x
   main_labels$logp <- -log10(main_labels$p_final)
   main_nudge <- assign_tier_nudge(main_labels, y_top * 1.05, y_label_ceiling, "logp", n_tiers = 8)
   p <- p + geom_text_repel(data = main_labels,
@@ -453,18 +360,9 @@ print(p)
 dev.off()
 
 # ── Inversion-scaffold Manhattan, gene labels pinned near the top ─────────
-# Same per-scaffold Manhattan_40000_3_<scaf>_<var_name> style as
-# find_outliers.R, for the scaffold carrying the putative inversion —
-# full scaffold, not just the 43-50Mb inversion window — labeled with gene
-# names/acronyms (reusing the whole-genome `labels` table computed above —
-# the FULL one, not main_labels, so inversion-window genes excluded from
-# the whole-genome plot are shown here instead — filtered to this
-# scaffold). All labels plain black, same as the whole-genome plot.
-# Differences from find_outliers.R's version: y-axis text is doubled
-# (theme_bw(base_size=11) default 8.8pt -> 17.6pt here), the Bonferroni
-# threshold line is drawn heavier (linewidth 1.5 vs 0.5), and the aspect
-# ratio is flatter (8x2.3in vs 7x3.5in). INV_SCAFFOLD/inv_chr were already
-# defined above (needed there to exclude inversion labels from the main plot).
+# Whole DEINVI_00006 scaffold in the per-scaffold style of find_outliers.R, labelled from
+# the full `labels` table (including inversion-window genes), with larger y-axis text,
+# a heavier threshold line and a flatter aspect ratio.
 if (!is.null(inv_chr)) {
   inv_retained <- retained_df[as.character(retained_df$Chromosome) == inv_chr, ]
 
@@ -472,16 +370,14 @@ if (!is.null(inv_chr)) {
     inv_snps   <- data[as.character(data$Chromosome) == inv_chr, ]
     inv_labels <- labels[as.character(labels$Chromosome) == inv_chr, ]
 
-    FAI <- "/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked.fai"
+    FAI <- file.path(BASE_DIR, "genome/DEINVI_genome.fasta.masked.fai")
     fai_df <- read.table(FAI, header = FALSE,
                          col.names = c("scaffold", "length", "offset", "linebases", "linewidth"),
                          stringsAsFactors = FALSE)
     scaf_len <- fai_df$length[fai_df$scaffold == INV_SCAFFOLD]
     x_breaks <- seq(0, scaf_len, by = 10e6)
 
-    # Ceiling matching the label-placement ylim below — see note on
-    # y_label_ceiling/y_panel_ceiling in the whole-genome plot above for
-    # why these are two different values.
+    # Label and panel ceilings, as in the whole-genome plot
     inv_y_top           <- max(-log10(inv_snps$p_final), na.rm = TRUE)
     inv_y_label_ceiling <- inv_y_top * 2.0
     inv_y_panel_ceiling <- inv_y_top * 4.0
@@ -526,13 +422,10 @@ if (!is.null(inv_chr)) {
 }
 
 # ── Plot-ready per-scaffold data for the stacked inversion figures ─────────
-# (gvtp_popgen/inversion/DEINVI_0006_stacked.py), so they draw exactly the
-# same SNPs, threshold, and labels as the per-scaffold Manhattan plot above.
-# Peak-filtered: non-outliers plus only the Bonferroni SNPs retained in
-# 40000_3 peaks (isolated Bonferroni hits dropped, as in the whole-genome
-# plot), but without the whole-genome plot's random 50% thinning.
+# (gvtp_popgen/inversion/DEINVI_0006_stacked.py): same SNPs, threshold and labels as the
+# per-scaffold plot above (non-outliers plus retained 40000_3 SNPs, not thinned).
 EXPORT_SCAFFOLDS <- c("DEINVI_00003", "DEINVI_00006", "DEINVI_00008", "DEINVI_00017")
-fai_all <- read.table("/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked.fai",
+fai_all <- read.table(file.path(BASE_DIR, "genome/DEINVI_genome.fasta.masked.fai"),
                       header = FALSE, stringsAsFactors = FALSE)[, 1:2]
 retained_df <- as.data.frame(retained)
 for (scaf in EXPORT_SCAFFOLDS) {

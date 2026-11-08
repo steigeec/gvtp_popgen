@@ -1,8 +1,10 @@
 #!/bin/bash
 # Submit one SLURM job per population with memory scaled to population size.
 
-SCRIPT=/private/groups/meyerlab/esteiger/gvtp_popgen/selection/TajD/run_TajD.sh
-LOGDIR=/private/groups/meyerlab/esteiger/gvtp_popgen/selection/TajD
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+SCRIPT=${BASE_DIR}/gvtp_popgen/selection/TajD/run_TajD.sh
+LOGDIR=${BASE_DIR}/gvtp_popgen/selection/TajD
 
 #                name        minInd  nIndiv  threads  mem
 populations=(

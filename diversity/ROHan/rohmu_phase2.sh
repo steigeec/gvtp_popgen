@@ -1,27 +1,16 @@
 #!/bin/bash
-# =============================================================================
-# rohmu_phase2.sh — ROHan pass 2 (HMM) + F_ROH extraction + rohmu selection
+# rohmu_phase2.sh
+# ROHan pass 2 (HMM) for each calibration sample at 6x and 3x across candidate
+# rohmu values, then pick the rohmu with the lowest mean relative cross-depth
+# discordance in F_ROH (|dF_ROH| / mean F_ROH). Writes chosen_rohmu.txt.
 #
-# Runs after all phase 1 array tasks complete.  For each calibration sample
-# and depth, runs the HMM at every rohmu candidate, extracts F_ROH from the
-# summary files, and selects the rohmu with lowest cross-depth discordance.
+# Relative rather than absolute discordance is used because F_ROH shrinks at low
+# rohmu, so absolute differences are trivially smaller there and always favour
+# the lowest value tested. The range extends down to 1e-5 to confirm the minimum
+# lies inside the tested range.
 #
-# Selection metric: RELATIVE discordance — |ΔF_ROH| / mean(F_ROH) — rather
-# than absolute |ΔF_ROH|.  Absolute discordance is biased toward lower rohmu
-# values because F_ROH is smaller at lower rohmu, yielding trivially smaller
-# absolute differences even if relative precision is equivalent.  This caused
-# the calibration to always select 5e-5 (the floor of the original range)
-# regardless of stratification strategy.  Relative discordance removes that
-# bias; pairs where both depths call 0% ROH are skipped as uninformative.
-#
-# The rohmu range was also extended downward (added 1e-5, 2e-5, 3e-5) to
-# verify that a genuine minimum exists within the tested range rather than the
-# discordance curve still declining at the lower boundary.
-#
-# Submit with dependency:
+# Submit via estimate_rohmu.sh or:
 #   sbatch --dependency=afterok:<phase1_jobid> rohmu_phase2.sh
-# Or let estimate_rohmu.sh handle submission.
-# =============================================================================
 
 #SBATCH --job-name=rohmu_p2
 #SBATCH --partition=long
@@ -33,9 +22,11 @@
 
 set -euo pipefail
 
-ROHAN=/private/groups/meyerlab/esteiger/software/rohan/bin/rohan
-REF=/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked
-OUTDIR=/private/groups/meyerlab/esteiger/diversity/ROH/ROHan
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+ROHAN=${BASE_DIR}/software/rohan/bin/rohan
+REF=${BASE_DIR}/genome/DEINVI_genome.fasta.masked
+OUTDIR=${BASE_DIR}/diversity/ROH/ROHan
 ROHMU_DIR=$OUTDIR/rohmu_calibration
 SCAFFOLDS=$OUTDIR/scaffolds_1mb_names.txt
 
@@ -105,10 +96,9 @@ echo "=== Extracting F_ROH ==="
 echo "F_ROH table → rohmu_calibration/froh_by_rohmu.tsv"
 
 # --- Compute cross-depth discordance and select best rohmu --------------------
-# Relative discordance: |ΔF_ROH| / mean(F_ROH).  Pairs where both depths
-# return 0% are skipped — they are uninformative rather than evidence of
-# agreement, and including them would inflate the apparent precision at low
-# rohmu where the HMM calls nothing as ROH.
+# Pairs where both depths give 0% ROH are skipped: they are uninformative, and
+# including them would inflate apparent precision at low rohmu, where the HMM
+# calls nothing as ROH.
 awk -v chosen="$OUTDIR/chosen_rohmu.txt" '
 BEGIN { OFS="\t" }
 NR==1 { next }

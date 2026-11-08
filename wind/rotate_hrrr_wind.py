@@ -20,7 +20,9 @@ are snapped to the latest timestep's coordinates.
 Input:  BASE_DIR/wind/hrrr/hrrr_wind_raw_points.csv
 Output: BASE_DIR/wind/hrrr/hrrr_wind_raw_points_earth.csv
         (same columns; used by all downstream scripts)
-Env:    'herbie' conda env
+Conda env: herbie
+  conda create -n herbie -c conda-forge python=3.11 herbie-data=2026.3.0
+  (Herbie also brings pandas, xarray, cfgrib and scipy)
 Usage:  /private/home/esteiger/miniconda3/envs/herbie/bin/python3 rotate_hrrr_wind.py
 """
 import numpy as np

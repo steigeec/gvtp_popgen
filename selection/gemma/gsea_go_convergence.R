@@ -1,52 +1,20 @@
 #!/usr/bin/env Rscript --vanilla
 
-# Cross-variable convergence check for gsea_go_stricter_nominal.R's
-# stricter-threshold output (GSEA_GO_stricter_nominal_<var>.tsv). A single
-# variable's nominal hit is weak evidence on its own (nothing here is
-# FDR-significant, see GSEA_GO.R/cluster_gsea_go_results.R); a term or
-# candidate gene that shows up as a nominal hit under multiple INDEPENDENT
-# environmental gradients is stronger evidence than any one test's p-value,
-# since the three GEMMA runs it's drawn from don't share a null
-# distribution.
-#
-# Reports THREE things:
-#   - term-level (exact match): the exact same GO term nominal in >=2
-#     variables' own already-reduced lists. This is the primary,
-#     highest-confidence convergence result.
-#   - term-level (near-miss candidates): pairs of DIFFERENT GO ids, one
-#     from each of two variables' final lists, whose GO semantic
-#     similarity (Wang, same ontology) is >= NEAR_MISS_THRESHOLD. This
-#     exists because gsea_go_stricter_nominal.R's rrvgo reduction runs
-#     independently per variable, and its greedy highest-scoring-member
-#     rule can pick a DIFFERENT sibling term as the "representative" in
-#     each variable even when the same semantic cluster is enriched in
-#     both -- confirmed on this dataset: wax biosynthesis survives as
-#     GO:1904278 "positive regulation of wax biosynthetic process" in
-#     fog's reduction but GO:1904276 "regulation of wax biosynthetic
-#     process" in BIO18's, so the exact-match check above alone would
-#     silently miss it. This near-miss list is intentionally NOT
-#     auto-merged into the exact-match table: pairwise GO similarity
-#     doesn't cleanly separate "same process" from "related but
-#     meaningfully different" (empirically, a probably-genuine pair like
-#     diterpene phytoalexin biosynthetic/metabolic process scored LOWER,
-#     0.421, than a probably-different pair like protein arginylation vs.
-#     glutathionylation, 0.621) -- so these candidates need a human
-#     decision, not an automatic one. Also deliberately pairwise rather
-#     than clustering-based: clustering with transitive chaining is what
-#     caused the earlier over-merging (e.g. "protein arginylation" and
-#     "positive regulation of mRNA catabolic process" ending up in one
-#     cluster at rrvgo threshold 0.7 despite a direct similarity of only
-#     0.214) -- a direct pairwise check has no transitive chain to ride.
+# Cross-variable convergence of nominal GSEA GO results
+# (GSEA_GO_stricter_nominal_<var>.tsv from gsea_go_stricter_nominal.R).
+# Reports:
+#   - term-level, exact match: the same GO term nominal in >=2 variables;
+#   - term-level near-miss candidates: pairs of different GO terms, one from
+#     each of two variables, with Wang similarity >= NEAR_MISS_THRESHOLD
+#     (same ontology). Separate rrvgo reductions can keep different sibling
+#     terms for the same cluster. These are for manual review, not merged;
 #   - gene-level: a leading-edge gene recurring across nominal terms from
-#     >=2 different variables (catches convergence GO's granularity misses
-#     entirely, e.g. the same gene turning up under two differently-named
-#     but related terms in different variables)
+#     >=2 variables.
 #
 # Usage: Rscript gsea_go_convergence.R <var1> <var2> [<var3> ...] [--dir <base_dir>]
 #   e.g. Rscript gsea_go_convergence.R fog BIO15 BIO18
 # Expects each <var>/GSEA_GO_stricter_nominal_<var>.tsv (gsea_go_stricter_nominal.R
-# output) under base_dir (default: current directory, one subdirectory per
-# variable, matching this pipeline's existing <var>/<var>_file.tsv layout).
+# output) under base_dir (default: current directory, one subdirectory per variable).
 # Writes to base_dir:
 #   GO_term_convergence_across_variables.tsv   (exact-match, primary)
 #   GO_term_near_miss_candidates.tsv           (semantic near-misses, for manual review)
@@ -57,11 +25,7 @@ suppressMessages({
     library(GOSemSim)
 })
 
-NEAR_MISS_THRESHOLD <- 0.8  # Wang similarity; see header note on why this is
-                            # a manual-review candidate list, not an
-                            # auto-merge -- 0.8 catches the confirmed wax
-                            # biosynthesis case (0.827) while excluding a
-                            # probably-different pair scoring 0.621.
+NEAR_MISS_THRESHOLD <- 0.8  # Wang similarity
 
 args <- commandArgs(trailingOnly = TRUE)
 dir_idx <- which(args == "--dir")
@@ -71,9 +35,7 @@ if (length(var_names) < 2) {
     stop("Usage: Rscript gsea_go_convergence.R <var1> <var2> [<var3> ...] [--dir <base_dir>]")
 }
 
-# --- Load each variable's stricter-threshold nominal table (each
-# variable's own, independently rrvgo-reduced top-term list -- the exact
-# same file gsea_go_lollipop_3panel.R plots) ---
+# --- Load each variable's rrvgo-reduced nominal table ---
 all_terms <- list()
 for (v in var_names) {
     infile <- file.path(base_dir, v, paste0("GSEA_GO_stricter_nominal_", v, ".tsv"))
@@ -87,8 +49,7 @@ for (v in var_names) {
 combined <- bind_rows(all_terms)
 print(paste0("Loaded ", nrow(combined), " nominal term-hits across ", length(var_names), " variables"))
 
-# --- Term-level convergence (primary, exact match): same GO id (pathway)
-# nominal in >=2 variables ---
+# --- Term-level convergence (exact match): same GO id nominal in >=2 variables ---
 term_conv <- combined %>%
     group_by(pathway, term, ontology) %>%
     summarise(
@@ -106,11 +67,8 @@ write.table(term_conv, file = term_out, sep = "\t", quote = FALSE, row.names = F
 print(paste0(nrow(term_conv), " GO terms (exact match) nominal in >=2 of ", length(var_names),
              " variables -- wrote ", term_out))
 
-# --- Term-level near-miss candidates: different GO id, high pairwise
-# semantic similarity, one term from each of two variables. Computed only
-# between variable-pairs' terms that AREN'T already an exact match above,
-# and only within the same ontology (cross-ontology similarity isn't
-# meaningful for GOSemSim's annotation-based methods). ---
+# --- Term-level near-miss candidates: different GO ids, same ontology,
+# high pairwise semantic similarity ---
 near_miss_rows <- list()
 ontologies_present <- intersect(c("BP", "MF", "CC"), unique(combined$ontology))
 sem_data <- setNames(lapply(ontologies_present, function(o) godata("org.At.tair.db", ont = o)),
@@ -157,16 +115,9 @@ print(paste0(nrow(near_miss), " near-miss candidate pairs (similarity >= ", NEAR
              ", different GO ids, NOT auto-merged -- manual review) -- wrote ", near_miss_out))
 
 # --- Gene-level convergence: a leading-edge gene recurring across nominal
-# terms from >=2 different variables (regardless of which term) ---
-# Terms above MAX_TERM_SIZE are excluded from this step only (not from the
-# term-level convergence above): a near-generic category like "plasma
-# membrane" (size ~4091, a large fraction of the annotated genome here) will
-# trivially "converge" with almost any gene in almost any variable just by
-# being huge, not because of any real shared signal -- confirmed empirically
-# on this dataset, where excluding it alone dropped 141 of 249 gene-level
-# convergence rows (57%). fgsea itself already corrects for set size when
-# testing a term's own enrichment; this cap only protects the separate,
-# unweighted gene-overlap-counting logic below, which has no such correction.
+# terms from >=2 variables ---
+# Terms larger than MAX_TERM_SIZE (e.g. "plasma membrane") are excluded from this
+# step only, since very large terms share genes with almost anything.
 MAX_TERM_SIZE <- 200
 
 n_before_size_filter <- nrow(combined)

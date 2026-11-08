@@ -1,42 +1,31 @@
 #!/usr/bin/env python3
 """
 Stacked, x-aligned summary figure for putative inversions on one scaffold
-(originally DEINVI_00006; per-scaffold settings live in SCAFFOLDS below).
+(per-scaffold settings in SCAFFOLDS below).
 
 Usage: DEINVI_0006_stacked.py [scaffold]     (default DEINVI_00006)
 
-One column of panels sharing a single x-axis (position on the scaffold):
-  1. fog GEMMA Manhattan (SNPs, Bonferroni threshold, gene labels exported by
-     gvtp_popgen/selection/gemma/annotated_manhattan.R, so they match its
-     per-scaffold Manhattan plot)
+Panels, sharing one x-axis:
+  1. fog GEMMA Manhattan (SNPs, Bonferroni threshold and gene labels exported by
+     selection/gemma/annotated_manhattan.R)
   2. Gene density, 500 kb windows    } window tables written by
   3. LINE content, 500 kb windows    } scaffold_windows.py
   4. % variance explained by PC1 per window, from the same run as panel 5
   5. winPCA PC1, one line per sample
-  6. winPCA SNP heterozygosity -- GT-based (winpca only computes hetp from
+  6. winPCA SNP heterozygosity: GT-based (winpca only computes hetp from
      called genotypes), no MAF filter, >=8x samples only
-Panels 4-6 are left blank for a scaffold with no winPCA run yet.
+Panels 4-6 are left blank for a scaffold with no winPCA run.
 
-For DEINVI_00006: PC1 is the all-locality 5% MAF GL run
-(winPCA_maf5_DEINVI_00006.sh, its "_flipped" copy with auto-polarization sign
-flips corrected); heterozygosity is the all-locality >=8x GT run (_all8x).
-For DEINVI_00003 / 00008 / 00017: all-locality 5% MAF runs from
-winPCA_maf5.sh (+ the all-locality GT run for 00017's heterozygosity).
+DEINVI_00006: PC1 from the all-locality 5% MAF GL run (winPCA_maf5_DEINVI_00006.sh,
+"_flipped" copy with sign flips corrected); heterozygosity from the all-locality
+>=8x GT run (_all8x). DEINVI_00003 / 00008 / 00017: all-locality 5% MAF runs from
+winPCA_maf5.sh (plus the all-locality GT run for 00017's heterozygosity).
 
-winPCA lines are colored by fog with winpca's own numeric color scale (see
-small_chromplot.py). metadata.tsv stores fog NEGATED relative to
-env_var.txt (exactly -1x; presumably so winpca's navy->yellow scale puts
-high fog at navy), so it is flipped back here to real fog (days per month)
-and the color scale reversed to match -- each sample keeps the same color
-as in the standalone winPCA plots, but the colorbar reads true fog values.
-
-Lines are drawn in descending fog, so the lowest-fog samples sit on top.
-Strauss is 277 of the 339 all-locality samples, so for plotting only (the
-PCA itself used everyone) each locality is capped at PER_SITE_CAP randomly
-chosen individuals (fixed seed). Samples present in both the PC1 and
-heterozygosity runs are picked first, so the two panels show the same
-individuals wherever possible; a site with fewer such samples than the cap
-is topped up from the PC1-only ones.
+metadata.tsv stores fog negated relative to env_var.txt, so it is flipped back
+here and winpca's colour scale reversed to match.
+For plotting only, each locality is capped at PER_SITE_CAP random individuals
+(fixed seed), preferring samples present in both the PC1 and heterozygosity runs;
+lines are drawn in descending fog.
 """
 
 import os
@@ -48,19 +37,17 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, "/private/groups/meyerlab/esteiger/gvtp_popgen/selection/gemma")
-import temporal_null as tn      # centromere-matched random-SNP null (shared with fog_peaks_temporal.py)
+sys.path.insert(0, f"{BASE_DIR}/gvtp_popgen/selection/gemma")
+import temporal_null as tn
 
-WINPCA_DIR = "/private/groups/meyerlab/esteiger/inversions/all_localities"
-OUT_DIR    = "/private/groups/meyerlab/esteiger/inversions"
-# Per-scaffold settings. shade: grey boxes (Mb; None = the scaffold's centromere
-# call from call_centromeres.py, CENTROMERES); lines: draw the per-sample winPCA
-# PC1 and heterozygosity panels (False = only the PC1 % variance track; for
-# chr 6 those panels are in the supplementary figure, chr6_synteny_panels.py);
-# winpca / hetp: winPCA output
-# prefixes (None = panel left blank); labels: genes to annotate on the
-# Manhattan panel (None = every exported label of <= MAX_LABEL_CHARS
-# characters, labels at the same SNP joined with "/").
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+WINPCA_DIR = f"{BASE_DIR}/inversions/all_localities"
+OUT_DIR    = f"{BASE_DIR}/inversions"
+# Per-scaffold settings. shade: grey boxes (Mb; None = centromere call from
+# CENTROMERES); lines: draw per-sample winPCA panels (False = PC1 % variance only);
+# winpca / hetp: winPCA output prefixes (None = panel left blank); labels: genes
+# to annotate on the Manhattan (None = every label of <= MAX_LABEL_CHARS characters).
 SCAFFOLDS = {
     "DEINVI_00006": dict(
         shade=None,
@@ -69,12 +56,10 @@ SCAFFOLDS = {
         hetp=f"{WINPCA_DIR}/DEINVI_00006_GT_all8x",
         labels=["GNS1"],
         label_text={"GNS1": "GNS1, SNF1"},   # display text for a label (the peak spans both genes)
-        synteny=False,             # top panel: ancestral segments (see SYNTENY_* below); off --
-                                   # synteny is in the supplementary figure (chr6_synteny_panels.py)
+        synteny=False,             # top panel: ancestral segments (see SYNTENY_* below)
         bottom_row=True,           # bottom panels (chr 6 fog peak data; see BOTTOM_* below)
         out=f"{OUT_DIR}/DEINVI_0006.jpg"),
-    # 5% MAF runs from winPCA_maf5.sh (submitted 2026-10-03); switch to the
-    # "_flipped" copies once sign flips have been checked/fixed
+    # 5% MAF runs from winPCA_maf5.sh (sign flips not yet corrected)
     "DEINVI_00003": dict(shade=None, winpca=f"{WINPCA_DIR}/DEINVI_00003_GL_maf5", hetp=None,
                          labels=None, out=f"{OUT_DIR}/DEINVI_0003.jpg"),
     "DEINVI_00008": dict(shade=None, winpca=f"{WINPCA_DIR}/DEINVI_00008_GL_maf5", hetp=None,
@@ -86,7 +71,7 @@ SCAFFOLDS = {
 CHROM = sys.argv[1] if len(sys.argv) > 1 else "DEINVI_00006"
 CFG = SCAFFOLDS[CHROM]
 CHROM_NUM = int(CHROM.split("_")[1])
-CENTROMERES = "/private/groups/meyerlab/esteiger/inversions/centromere/centromeres.tsv"
+CENTROMERES = f"{BASE_DIR}/inversions/centromere/centromeres.tsv"
 if CFG["shade"] is None:
     _cen = pd.read_csv(CENTROMERES, sep="\t").query("confident").set_index("chr")
     CFG["shade"] = [(_cen.loc[CHROM, "cen_start"] / 1e6, _cen.loc[CHROM, "cen_end"] / 1e6)] if CHROM in _cen.index else []
@@ -94,10 +79,10 @@ lines = CFG.get("lines", True)
 SHADE_ALPHA   = 0.25           # grey box opacity
 MAX_LABEL_CHARS = 12
 
-GENE_DENSITY_DIR = "/private/groups/meyerlab/esteiger/inversions/gene_density"
-GEMMA_DIR        = "/private/groups/meyerlab/esteiger/selection/gemma"
+GENE_DENSITY_DIR = f"{BASE_DIR}/inversions/gene_density"
+GEMMA_DIR        = f"{BASE_DIR}/selection/gemma"
 MANHATTAN_VAR    = "fog"
-WINPCA_META      = "/private/groups/meyerlab/esteiger/inversions/metadata.tsv"
+WINPCA_META      = f"{BASE_DIR}/inversions/metadata.tsv"
 WINPCA_COLOR_BY  = "fog"
 
 # winpca's numeric color scale, reversed because fog is un-negated below
@@ -109,73 +94,51 @@ TICK_SIZE        = 19         # every tick label and legend entry
 PANEL_LETTERS    = "CDEFGHIJKLM"  # panel labels: column panels top to bottom, then the bottom row left to right
 PANEL_LETTER_SIZE = 28
 
-# Bottom row (panels G-I), chr 6 only; all Tranquillon Mtn (Strauss) data, drawn
-# in its locality colour (TRANQ_COLOR, as in the Tajima's D figures):
-#   G: unit long-term fog vs favorable-allele frequency, every fog peak (chr 6 =
-#      diamonds, area ~ plants per unit, dashed line; other peaks = lines only)
-#   H: germination-year (June) fog by germination year (one value per plant)
-#   I: germination-year fog vs unit-adjusted favorable-allele frequency per
-#      cohort, every fog peak (chr 6 = diamonds +-95% CI, labelled by year,
-#      dashed within-unit line; other peaks = lines only)
-# Data exported by gvtp_popgen/selection/gemma/fog_peak_figures.py (G, I; same
-# plants, polarization and spatial units as fog_hypothesis_tests.py) and
-# fog_deinvi6_figure.R (H).
-BOTTOM_BY_YEAR = "/private/groups/meyerlab/esteiger/selection/gemma/fog/fog_deinvi6_by_year.tsv"
-BOTTOM_UNITS   = "/private/groups/meyerlab/esteiger/selection/gemma/fog/fog_peaks_by_unit.tsv"
-BOTTOM_PEAK_YR = "/private/groups/meyerlab/esteiger/selection/gemma/fog/fog_peaks_by_year.tsv"
+# Bottom row (panels G-I), chr 6 only; Tranquillon Mtn (Strauss) data:
+#   G: unit long-term fog vs favorable-allele frequency, every fog peak
+#   H: germination-year (June) fog by germination year
+#   I: germination-year fog vs unit-adjusted favorable-allele frequency per cohort
+# Data exported by selection/gemma/fog_peak_figures.py (G, I) and fog_deinvi6_figure.R (H).
+BOTTOM_BY_YEAR = f"{BASE_DIR}/selection/gemma/fog/fog_deinvi6_by_year.tsv"
+BOTTOM_UNITS   = f"{BASE_DIR}/selection/gemma/fog/fog_peaks_by_unit.tsv"
+BOTTOM_PEAK_YR = f"{BASE_DIR}/selection/gemma/fog/fog_peaks_by_year.tsv"
 TRANQ_COLOR    = "#009e73"
 OTHER_ALPHA    = 0.45         # non-chr 6 peak lines in G and I
 BOTTOM_WIDTHS  = [1.45, 0.65, 0.85]   # relative widths of panels G, H, I
 # panel I year labels: (x, y offset in points, alignment), placed clear of the CIs and line
 YEAR_LABEL_OFFSET = {2020: (12, -16, "left"), 2021: (-14, 14, "right"), 2022: (14, -16, "left")}
 
-# Synteny panel (top; chr 6 only): black = stretches syntenic with sunflower
-# (Helianthus annuus) and lettuce (Lactuca sativa), i.e. runs of GENESPACE
-# syntenic gene pairs (blkID assigned) split wherever consecutive hits are
-# > SYNTENY_GAP Mb apart. Hatched = SYNTENY_REVERSED, a run of genes whose
-# order is reversed relative to sunflower, H. anomalus and lettuce (from the
-# gene order of the syntenic hits; minimal extent, outermost reversed genes).
-SYNTENY_DIR      = "/private/groups/meyerlab/esteiger/inversions/synteny/genespace/syntenicHits"
+# Synteny panel (top; chr 6 only): black = runs of GENESPACE syntenic hits with
+# sunflower and lettuce, split at gaps > SYNTENY_GAP Mb; hatched = SYNTENY_REVERSED,
+# a run of genes in reversed order relative to sunflower, H. anomalus and lettuce.
+SYNTENY_DIR      = f"{BASE_DIR}/inversions/synteny/genespace/syntenicHits"
 SYNTENY_SPECIES  = ["Helianthus_annuus", "Lactuca_sativa"]
 SYNTENY_GAP      = 5.0
 SYNTENY_REVERSED = [(19.34, 20.83)]
 
-# Temporal checks (printed and written to TEMPORAL_OUT): is the favorable
-# haplotype's frequency in the foggiest germination cohort unusual?
-# Statistic (fixed in advance): allele frequency in FOGGY_YEAR minus the
-# pooled other years, from mean dosage / 2.
-#   1. Random-SNP null: the same statistic for random SNPs elsewhere in the
-#      genome (one per random 2 kb region, not on DEINVI_00006), each polarized
-#      exactly like the outliers (favorable = allele whose coverage-adjusted
-#      dosage increases with long-term fog across ALL samples, as in
-#      germ_year_polygenic.R / fog_deinvi6_figure.R), with favorable-allele
-#      frequency in Strauss matched to the peak haplotype (+-NULL_FREQ_TOL),
-#      same individuals and years. Imputed dosages (DS) from the GWAS VCF for
-#      all samples; cached in NULL_CACHE (shared with fog_peaks_temporal.py).
-#   2. Within-stand permutation: years shuffled within each stand (OHANA_order,
-#      field_data.txt), so stand composition per year is held fixed.
-#   3. Centromere-matched null: as 1., but the random SNPs lie at a similar
-#      distance from their own scaffold's centromere as the peak does from the
-#      chr 6 centromere (temporal_null.py; same cache and band as
-#      fog_peaks_temporal.py), since low recombination near centromeres can
-#      make allele frequencies more variable.
+# Temporal checks (written to TEMPORAL_OUT): favorable-haplotype frequency in
+# FOGGY_YEAR minus the pooled other years (mean dosage / 2), compared with
+#   1. random SNPs off DEINVI_00006 (one per random 2 kb region), polarized by
+#      long-term fog across all samples and frequency-matched (+-NULL_FREQ_TOL);
+#      dosages cached in NULL_CACHE
+#   2. years permuted within each stand (OHANA_order, field_data.txt)
+#   3. as 1., but random SNPs at a similar distance from their centromere (temporal_null.py)
 FOGGY_YEAR     = 2021
-VCF_DS         = "/private/groups/meyerlab/esteiger/variant_calling/angsd/postParalog_MAF_auto_GLimp_clean.vcf.gz"
-FAI            = "/private/groups/meyerlab/esteiger/inversions/filtered_scaffolds.fai"
-FIELD_DATA     = "/private/groups/meyerlab/esteiger/field_data.txt"
-ENV_VAR        = "/private/groups/meyerlab/esteiger/env_var.txt"
-NULL_CACHE     = "/private/groups/meyerlab/esteiger/selection/gemma/fog/temporal_null_random_snps_allsamples.tsv.gz"
-TEMPORAL_OUT   = "/private/groups/meyerlab/esteiger/selection/gemma/fog/temporal_checks.tsv"
+VCF_DS         = f"{BASE_DIR}/variant_calling/angsd/postParalog_MAF_auto_GLimp_clean.vcf.gz"
+FAI            = f"{BASE_DIR}/inversions/filtered_scaffolds.fai"
+FIELD_DATA     = f"{BASE_DIR}/field_data.txt"
+ENV_VAR        = f"{BASE_DIR}/env_var.txt"
+NULL_CACHE     = f"{BASE_DIR}/selection/gemma/fog/temporal_null_random_snps_allsamples.tsv.gz"
+TEMPORAL_OUT   = f"{BASE_DIR}/selection/gemma/fog/temporal_checks.tsv"
 PEAK_SPAN      = ("DEINVI_00006", 49031257, 49146391)   # the chr 6 fog peak (19 retained fog SNPs)
-FOG_OUTLIERS   = "/private/groups/meyerlab/esteiger/selection/gemma/fog/outliers_for_annot_40000_3_fog.txt"
+FOG_OUTLIERS   = f"{BASE_DIR}/selection/gemma/fog/outliers_for_annot_40000_3_fog.txt"
 N_NULL_REGIONS, NULL_FREQ_TOL, N_PERM = 8000, 0.04, 10000
 PER_SITE_CAP     = 15         # max individuals drawn per locality in the winPCA panels (None = all)
-PC1_YEARS        = None       # sampling years (metadata Year.x) drawn in the PC1 panel (None = all);
-                              # plotting only -- the PCA itself used every sample
+PC1_YEARS        = None       # sampling years (metadata Year.x) drawn in the PC1 panel (None = all; plotting only)
 SUBSAMPLE_SEED   = 1
 LINE_WIDTH       = 1.8        # winPCA panels' per-sample lines
 LINE_ALPHA       = 0.45
-CBAR_ALPHA       = 0.6        # colorbar opacity (a bit above LINE_ALPHA: overlapping lines read darker)
+CBAR_ALPHA       = 0.6        # colorbar opacity
 Y_PAD            = 0.01       # y-axis headroom beyond the most extreme value (fraction of data range)
 
 # ── Load data ────────────────────────────────────────────────────────────────
@@ -289,7 +252,7 @@ def temporal_checks(by_year):
     D = D.where(pd.Series(beta > 0, index=D.index), 2 - D, axis=0)   # favorable dose
     f = D.mean(axis=1) / 2
     D = D[((f - f_peak).abs() <= NULL_FREQ_TOL) & (f > 0) & (f < 1)]
-    # thin to one SNP per random 2 kb region (regions are 2 kb windows at random positions)
+    # thin to one SNP per random 2 kb region
     region = [f"{c}:{int(p) // 2000}" for c, p in D.index]
     D = D.groupby(region, group_keys=False).apply(lambda x: x.sample(1, random_state=1))
     null = np.array([foggy_shift(row.values, years) for _, row in D.iterrows()])
@@ -407,10 +370,7 @@ for _, row in man_labels.iterrows():
 ax.set_ylim(0, man_df["logp"].max() * (1 + Y_PAD))
 ax.set_ylabel("-log10\np-val", fontsize=LABEL_SIZE)
 
-# Panels 2-4 share one style: a black line filled underneath with black.
-# Gene density and LINE content are per 500 kb window, so they're drawn as
-# steps (each window flat across its span); dashed grey line = genome-wide
-# value, drawn on top so it shows over the fill.
+# Panels 2-3: 500 kb windows drawn as filled steps; dashed grey line = genome-wide value
 def window_track(ax, win_df, col):
     edges = np.append(win_df["start"].values, win_df["end"].values[-1]) / 1e6
     ax.stairs(win_df[col].values, edges, fill=True, color="black")
@@ -436,8 +396,7 @@ if pca_stat is not None:
     ax.set_ylim(0, np.nanmax(ve) * (1 + Y_PAD))
 ax.set_ylabel("PC1\n% var.", fontsize=LABEL_SIZE)
 
-# Panels 5-6: winPCA, one line per sample, drawn in descending fog so the
-# lowest-fog samples are drawn last (on top); samples with no fog value first
+# Panels 5-6: winPCA, one line per sample; lowest-fog samples drawn last (on top)
 all_fog = -pd.to_numeric(pca_meta[WINPCA_COLOR_BY], errors="coerce")
 norm = matplotlib.colors.Normalize(vmin=fog_val.min() if len(fog_val) else all_fog.min(),
                                    vmax=fog_val.max() if len(fog_val) else all_fog.max())
@@ -532,8 +491,7 @@ if bottom_row:
 fig.align_ylabels(axes)
 fig.subplots_adjust(left=0.1, right=0.9, top=0.99, bottom=0.04)
 
-# Warn if neighbouring y-axis titles collide (a title may extend past its own
-# panel, as long as it clears the next panel's title)
+# warn if neighbouring y-axis titles collide
 fig.canvas.draw()
 label_boxes = [ax.yaxis.label.get_window_extent() for ax in axes]
 for upper, lower, a_up, a_lo in zip(label_boxes, label_boxes[1:], axes, axes[1:]):
@@ -542,8 +500,7 @@ for upper, lower, a_up, a_lo in zip(label_boxes, label_boxes[1:], axes, axes[1:]
         print(f"WARNING: y-axis titles {a_up.get_ylabel()!r} and {a_lo.get_ylabel()!r} "
               f"collide ({gap:.0f} px apart)")
 
-# Panel letters left-justified in one column, whose widest letter ends just
-# left of the leftmost y-axis label
+# panel letters in one column left of the leftmost y-axis label
 inv_fig = fig.transFigure.inverted()
 label_x0 = min(inv_fig.transform(ax.yaxis.label.get_window_extent())[0, 0] for ax in axes)
 letters = [fig.text(0, ax.get_position().y1, letter, fontsize=PANEL_LETTER_SIZE, ha="left", va="top")
@@ -553,8 +510,7 @@ widest = max(inv_fig.transform(t.get_window_extent())[1, 0] - inv_fig.transform(
              for t in letters)
 for t in letters:
     t.set_x(label_x0 - 0.003 - widest)
-# G-I: the first sits in the C-F letter column; the others just left of
-# their own y-axis title (and tick labels), level with the top of the panel
+# G in the same column; H, I just left of their own y-axis titles
 for k, (ax, letter) in enumerate(zip(bottom_axes, PANEL_LETTERS[len(axes):])):
     x0 = min(inv_fig.transform(ax.yaxis.label.get_window_extent())[0, 0],
              inv_fig.transform(ax.get_tightbbox(fig.canvas.get_renderer()))[0, 0])
@@ -570,7 +526,6 @@ if lines:
     cbar.set_label("Fog (days per month)", fontsize=LABEL_SIZE)
     cbar.ax.tick_params(labelsize=TICK_SIZE)
 
-# bbox_inches="tight" trims the outer whitespace down to pad_inches
 plt.savefig(CFG["out"], dpi=200, bbox_inches="tight", pad_inches=0.1,
             bbox_extra_artists=[ax.xaxis.label for ax in bottom_axes])
 plt.close()

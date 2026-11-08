@@ -1,4 +1,5 @@
 #!/bin/bash
+# BLAST one chunk of candidate sequences against remote NCBI nt (megablast).
 
 #SBATCH --job-name=blast_chunk
 #SBATCH --partition=long
@@ -9,14 +10,19 @@
 #SBATCH --output=blast_chunk_%A_%a.log
 
 # Usage: sbatch --array=0-N blast_chunks.sh <var_dir>
-# e.g.: sbatch --array=0-6 blast_chunks.sh /private/groups/meyerlab/esteiger/selection/gemma/fog
+# e.g.: sbatch --array=0-6 blast_chunks.sh BASE_DIR/selection/gemma/fog
+# Conda env: gemoma (BASE_DIR/software/miniconda3/envs/gemoma; for blastn)
+#   conda create -n gemoma -c bioconda gemoma=1.9 mmseqs2
+#   (BLAST+ 2.16.0 comes in as a GeMoMa dependency)
+
+BASE_DIR=/private/groups/meyerlab/esteiger
 
 VAR_DIR=$1
 CHUNK=$(printf "chunk_%02d" ${SLURM_ARRAY_TASK_ID})
 
 echo "BLASTing ${CHUNK} in ${VAR_DIR}"
 
-/private/groups/meyerlab/esteiger/software/miniconda3/envs/gemoma/bin/blastn -query "${VAR_DIR}/blast_chunks/${CHUNK}.fasta" \
+${BASE_DIR}/software/miniconda3/envs/gemoma/bin/blastn -query "${VAR_DIR}/blast_chunks/${CHUNK}.fasta" \
        -db nt \
        -remote \
        -max_target_seqs 15 \

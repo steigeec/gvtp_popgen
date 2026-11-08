@@ -9,6 +9,11 @@
 #SBATCH --time=168:00:00              # long max is 14 days * 24 hrs = 168 hrs
 #SBATCH --output=serial_test_%j.log   # Standard output and error log
 
+# BEAGLE 4 (r1399) genotype-likelihood imputation of a BCF, keeping sites with DR2 > 0.8.
+# Usage: sbatch imputation.sh <input.bcf>
+
+BASE_DIR=/private/groups/meyerlab/esteiger
+
 export LD_LIBRARY_PATH=$HOME/lib:$LD_LIBRARY_PATH
 
 VCF1="$1"
@@ -20,12 +25,11 @@ fi
 BASENAME=$(basename "$VCF1" .bcf)
 OUT_PREFIX="${BASENAME}_GLimp"
 
-BGL=/private/groups/meyerlab/esteiger/software/beagle.r1399.jar
+BGL=${BASE_DIR}/software/beagle.r1399.jar
 
 cd "$(dirname "$VCF1")"
 
-#  imputation (BEAGLE r1399 cannot read BCF directly; pipe through bcftools)
+# BEAGLE r1399 cannot read BCF, so pipe through bcftools
 bcftools view "$VCF1" | java -Xmx15000m -jar $BGL nthreads=50 gl=/dev/stdin out="$OUT_PREFIX" impute=true
 
-# Filter by imputation quality (DR2 > 0.8)
 bcftools view -i 'INFO/DR2>0.8' "${OUT_PREFIX}.vcf.gz" > "${OUT_PREFIX}.vcf"

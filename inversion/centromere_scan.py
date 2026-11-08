@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 """
 De novo search for centromeric satellite arrays on one scaffold (default
-DEINVI_00006), without a tandem-repeat finder: centromeric satellites form
-Mb-scale arrays of one short monomer, so their k-mers are extremely high-copy
-and clustered in one place.
+DEINVI_00006) from high-copy k-mers.
 
 Per WIN-bp window: fraction of positions whose canonical K-mer occurs
->= HIGH_COPY times on the scaffold ("high-copy fraction"), GC content, and
-assembly gap (N) content. For the windows with the highest high-copy
-fraction, the most frequent k-mer and the modal spacing between its
-successive occurrences (= tandem monomer length if it is a tandem array).
+>= HIGH_COPY times on the scaffold, GC content and N content. For the top
+windows, the most frequent k-mer and the modal spacing between its occurrences
+(tandem monomer length).
 
 Usage: centromere_scan.py [scaffold]
 Output: OUT_DIR/<scaffold>_kmer_windows.tsv, printed summary
@@ -18,8 +15,10 @@ import gzip, sys
 import numpy as np
 import pandas as pd
 
-GENOME = "/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.gz"
-OUT_DIR = "/private/groups/meyerlab/esteiger/inversions/centromere"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+GENOME = f"{BASE_DIR}/genome/DEINVI_genome.fasta.gz"
+OUT_DIR = f"{BASE_DIR}/inversions/centromere"
 CHROM = sys.argv[1] if len(sys.argv) > 1 else "DEINVI_00006"
 K, WIN, HIGH_COPY, TOP = 21, 100_000, 200, 15
 

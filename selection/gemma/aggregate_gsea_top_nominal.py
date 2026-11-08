@@ -1,28 +1,19 @@
 #!/usr/bin/env python3
 """
-Combines cluster_gsea_go_results.R's per-variable output
-(<var>/GSEA_GO_top_nominal_<var>.tsv) into one master table across all
-environmental variables, for a single place to scan the GSEA-track nominal
-hits rather than opening three separate files.
-
-Adds two columns the per-variable files don't have:
-  - Variable (first column): which environmental variable this row came
-    from -- the per-variable files don't carry this since it's implicit in
-    which file/directory they live in, but that context is lost once rows
-    from different variables sit in one combined table.
-  - Definition: the GO term's actual definition (not just its short name),
-    from go_term_definitions.tsv (parsed once from go-basic.obo -- see that
-    file's own header). Term names alone ("regulation of red or far-red
-    light signaling pathway") are often not self-explanatory out of context.
+Combines cluster_gsea_go_results.R output (<var>/GSEA_GO_top_nominal_<var>.tsv)
+across environmental variables into one table, adding a Variable column and
+the GO term definition (from go_term_definitions.tsv).
 
 Usage: python3 aggregate_gsea_top_nominal.py <var1> [<var2> ...]
-Writes /private/groups/meyerlab/esteiger/selection/gemma/GSEA_GO_top_nominal_all_variables.tsv
+Writes BASE_DIR/selection/gemma/GSEA_GO_top_nominal_all_variables.tsv
 """
 import csv
 import sys
 
-GEMMA_DIR = "/private/groups/meyerlab/esteiger/selection/gemma"
-DEFINITIONS_FILE = "/private/groups/meyerlab/esteiger/genome/go_term_definitions.tsv"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+GEMMA_DIR = f"{BASE_DIR}/selection/gemma"
+DEFINITIONS_FILE = f"{BASE_DIR}/genome/go_term_definitions.tsv"
 OUT_FILE = f"{GEMMA_DIR}/GSEA_GO_top_nominal_all_variables.tsv"
 
 

@@ -8,13 +8,15 @@
 #SBATCH --time=168:00:00
 #SBATCH --output=pop_het_%j.log
 
-# SAF files are built by /private/groups/meyerlab/esteiger/gvtp_popgen/pop_SAF.sh
-# This script estimates folded heterozygosity from the per-population SAF via realSFS.
-# Skips populations whose .ml already exists.
+# pop_het.sh
+# Folded SFS per population from the SAF files built by pop_SAF.sh (realSFS).
+# Populations with an existing .ml are skipped.
 
-SAFDIR=/private/groups/meyerlab/esteiger/SAF/population
-OUTDIR=/private/groups/meyerlab/esteiger/diversity/He/population
-RS=/private/groups/meyerlab/esteiger/software/angsd/misc/realSFS
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+SAFDIR=${BASE_DIR}/SAF/population
+OUTDIR=${BASE_DIR}/diversity/He/population
+RS=${BASE_DIR}/software/angsd/misc/realSFS
 
 POPS=(arguello conception lionhead cdfw strauss Dangermond)
 

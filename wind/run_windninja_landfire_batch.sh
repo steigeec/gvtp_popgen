@@ -6,7 +6,9 @@
 # Input:  HRRR grib2 subsets (download_hrrr_full_subset.py),
 #         BASE_DIR/env/landfire/<domain>_landfire.lcp
 # Output: BASE_DIR/wind/windninja_landfire/<domain>/*_vel.asc, *_ang.asc
-# Env:    windninja conda env
+# Conda env: windninja
+#   conda create -n windninja -c conda-forge windninja=3.13.0.1
+#   (also provides GDAL: gdalwarp, gdal_translate, gdallocationinfo)
 # Usage:  sbatch run_windninja_landfire_batch.sh region       (460 m mesh)
 #         sbatch run_windninja_landfire_batch.sh tranquillon  (100 m mesh)
 # Timesteps already run are skipped.

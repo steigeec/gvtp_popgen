@@ -1,4 +1,9 @@
 #!/usr/bin/env Rscript
+# GEMMA outliers for one variable: genomic control if lambda > 1.05, Bonferroni and FDR hits,
+# 40 kb sliding-window retention of multi-SNP peaks (40000_3 set), and Manhattan plots.
+# Usage: Rscript find_outliers.R <pheno_num> <var_name>  (run from the gemma directory)
+
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
 
 args <- commandArgs(trailingOnly=TRUE)
 pheno_num <- args[1]
@@ -7,9 +12,9 @@ var_name  <- args[2]
 dir.create(var_name, showWarnings=FALSE, recursive=TRUE)
 
 report_path <- file.path(var_name, paste0(var_name, "_report.txt"))
-# sink(report_path, split=TRUE)  # temporarily disabled — do not overwrite output files
+sink(report_path, split=TRUE)
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs")
+.libPaths(file.path(BASE_DIR, "software/R_libs"))
 library(bit64)
 library(data.table)
 library(dplyr)
@@ -34,16 +39,8 @@ froggy_theme <- theme(
 dic <- read.table("scaffold_snp_map.txt")
 dic <- unique(dic[,c("V1", "V3")])
 
-# Canonical scaffold order + cumulative genome offsets for the whole-genome
-# Manhattan plots, derived from the reference genome's actual scaffold
-# lengths — NOT from max(Position) within whatever random/outlier subset of
-# SNPs is being plotted (the old approach). That approach recomputed order
-# separately for each Manhattan variant from a randomly-downsampled 50% of
-# non-outlier SNPs (no set.seed()), so two scaffolds of similar length could
-# swap places between runs, or even between the two plots in the same run.
-# Basing it on the fixed .fai lengths instead makes the left-to-right
-# scaffold order identical every time, for every variable and every plot.
-FAI <- "/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked.fai"
+# Scaffold order and cumulative offsets for Manhattan plots, from reference scaffold lengths (.fai)
+FAI <- file.path(BASE_DIR, "genome/DEINVI_genome.fasta.masked.fai")
 fai_df <- read.table(FAI, header = FALSE,
                      col.names = c("scaffold", "length", "offset", "linebases", "linewidth"),
                      stringsAsFactors = FALSE)
@@ -66,17 +63,9 @@ print(paste("Lambda:", round(lambda, 3)))
 if (lambda > 1.05) {
   gemma$p_final <- pchisq(chisq_obs / lambda, df=1, lower.tail=FALSE)
   print("Applied genomic control")
-  # jpeg(file.path(var_name, "QQplot-comparison.jpg"), width=1200, height=600)
-  # par(mfrow=c(1,2))
-  # qq(gemma$p_lrt, main=paste("Uncorrected, lambda =", round(lambda, 3)))
-  # qq(gemma$p_final, main="GC Corrected")
-  # dev.off()
 } else {
   gemma$p_final <- gemma$p_lrt
   print("No genomic control needed")
-  # jpeg(file.path(var_name, "QQplot.jpg"), width=600, height=600)
-  # qq(gemma$p_lrt, main=paste("lambda =", round(lambda, 3)))
-  # dev.off()
 }
 
 # Bonferroni threshold
@@ -91,7 +80,7 @@ print(paste("FDR hits:", fdr_hits))
 
 if (bonf_hits == 0 && fdr_hits == 0) {
   print("No outliers from Bonferroni or FDR — skipping Manhattan plot")
-  # sink()
+  sink()
   quit(save="no", status=0)
 }
 
@@ -106,11 +95,11 @@ data_no <- data[data$out=="no",]
 data_no <- data_no[sample(nrow(data_no), nrow(data_no)/2), ]
 
 pks <- as.data.table(data[data$out=="out",])
-# Write-out temporarily disabled while iterating on the Manhattan plots below.
-# write.table(pks, file.path(var_name, paste0("unfiltered_outliers_for_annot_", var_name, ".txt")),
-#             quote=F, row.names=F, col.names=F)
+# Outlier table, read by Launch_find_outlier_annotate.sh
+write.table(pks, file.path(var_name, paste0("unfiltered_outliers_for_annot_", var_name, ".txt")),
+            quote=F, row.names=F, col.names=F)
 
-# Sliding-window retention: keep SNPs with >= 2 neighbours within 40kb
+# Sliding-window retention: keep SNPs with >= 2 neighbours within 40 kb
 if (nrow(pks) > 0) {
   win <- 40000; step <- 20000
   win_table <- list()
@@ -158,19 +147,15 @@ if (nrow(pks) > 0) {
   retained[, c("wstart", "wend", "N", "pos2") := NULL]
   pks[, pos2 := NULL]
 
-  # Write-out temporarily disabled while iterating on the Manhattan plots below.
-  # write.table(unique(retained), file.path(var_name, paste0("outliers_for_annot_40000_3_", var_name, ".txt")),
-  #             quote=F, row.names=F, col.names=F)
+  write.table(unique(retained), file.path(var_name, paste0("outliers_for_annot_40000_3_", var_name, ".txt")),
+              quote=F, row.names=F, col.names=F)
   print(paste("Retained SNPs (multi-SNP peaks):", nrow(unique(retained))))
 } else {
   print("No Bonferroni outliers — skipping window analysis")
   retained <- pks
 }
 
-# Helper: add cumulative genomic position columns to a Manhattan data frame,
-# using the fixed reference-genome scaffold order (chrom_order) so this is
-# identical across calls/runs rather than derived from whatever data is
-# passed in.
+# Helper: add cumulative genomic positions using the fixed scaffold order (chrom_order)
 add_positions <- function(man, chrom_order) {
   man$Chromosome <- as.character(man$Chromosome)
   man <- merge(man, chrom_order[, c("Chromosome", "start")], by = "Chromosome")
@@ -221,15 +206,13 @@ if (TRUE) {
 
 # ── Manhattan 1: all Bonferroni outliers ──────────────────────────────────────
 res_all <- add_positions(rbind(data_no, as.data.frame(pks)), chrom_order)
-# TEMPORARILY DISABLED — regenerating only the per-scaffold 40000_3 plots below
-# write_manhattan(res_all$man, dic, thresh_bonf, var_name)
+write_manhattan(res_all$man, dic, thresh_bonf, var_name)
 
 # ── Manhattan 2: filtered peaks only (40000_3 set) ────────────────────────────
 if (nrow(retained) > 0) {
   retained$out <- "out"
   res_ret <- add_positions(rbind(data_no, as.data.frame(retained)), chrom_order)
-  # TEMPORARILY DISABLED — regenerating only the per-scaffold 40000_3 plots below
-  # write_manhattan(res_ret$man, dic, thresh_bonf, var_name, tag = "40000_3")
+  write_manhattan(res_ret$man, dic, thresh_bonf, var_name, tag = "40000_3")
 
   # ── Per-scaffold Manhattan plots for 40000_3 peaks (scaffolds > 40 Mb only) ──
   long_scaffolds <- fai_df$scaffold[fai_df$length > 40e6]
@@ -241,9 +224,7 @@ if (nrow(retained) > 0) {
   retained_df <- as.data.frame(retained)
   retained_df$scaffold <- chr2scaf[as.character(retained_df$Chromosome)]
 
-  # Cluster retained SNPs into peak intervals (40kb merge gap, same logic as
-  # select_peak_labels.R) so each peak can get a background band on its
-  # scaffold's plot, padded a bit wider than the peak itself.
+  # Cluster retained SNPs into peaks (40 kb merge gap, as in select_peak_labels.R) for background bands
   PEAK_MERGE_GAP <- 40000
   retained_df <- retained_df[order(retained_df$scaffold, retained_df$Position), ]
   peak_id <- integer(nrow(retained_df)); cur <- 0; prev_scaf <- NA; prev_pos <- -Inf
@@ -270,11 +251,7 @@ if (nrow(retained) > 0) {
     data$scaffold <- chr2scaf[as.character(data$Chromosome)]
 
     for (scaf in target_scaffolds) {
-      # Points = non-outlier background SNPs (full resolution, not the
-      # genome-wide-downsampled data_no) plus the 40000_3 retained peak SNPs
-      # — this drops only the scattered Bonferroni hits that did NOT survive
-      # the 40kb/>=3-neighbour window filter, while keeping the full
-      # non-outlier background for context.
+      # Points: all non-outlier SNPs (not downsampled) plus retained 40000_3 SNPs
       non_outlier_scaf <- data[!is.na(data$scaffold) & data$scaffold == scaf & data$out == "no",
                                 c("Position", "p_final")]
       retained_scaf <- retained_df[!is.na(retained_df$scaffold) & retained_df$scaffold == scaf,
@@ -286,12 +263,7 @@ if (nrow(retained) > 0) {
       x_breaks <- seq(0, scaf_len, by = 10e6)
       x_labels <- paste0(x_breaks / 1e6, " Mb")
 
-      # Background bands for this scaffold's peaks — wider than the peak
-      # (and wider than the plotted points themselves) so it's clearly
-      # visible, full plot height. A percentage-of-peak-width pad alone is
-      # invisible/thinner than the points at whole-scaffold zoom (peaks are
-      # often <100kb on scaffolds tens of Mb long), so floor it at 1.5% of
-      # this scaffold's length per side instead of a fixed bp value.
+      # Peak bands padded by at least 1.5% of scaffold length per side, so they are visible at scaffold scale
       scaf_peaks <- peaks_by_scaffold[peaks_by_scaffold$scaffold == scaf, ]
       pad <- pmax(0.1 * (scaf_peaks$Peak_End - scaf_peaks$Peak_Start), scaf_len * 0.015)
       scaf_peaks$band_start <- pmax(0, scaf_peaks$Peak_Start - pad)
@@ -329,4 +301,4 @@ if (nrow(retained) > 0) {
 
 }  # end Manhattan plots
 
-# sink()
+sink()

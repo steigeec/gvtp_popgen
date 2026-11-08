@@ -1,27 +1,11 @@
 #!/usr/bin/env python3
 """
-Quantifies how much the per-variable candidate gene sets in
-gene_summary_all.tsv (BIO15, BIO18, fog -- one row per (Variable,
-Gene_Coordinates) candidate gene tied to an LD-curated outlier SNP for that
-variable) overlap with each other, despite the three environmental
-variables themselves being only weakly-to-moderately correlated (max
-pairwise Pearson r = 0.54, computed separately from the raw environmental
-data -- not reproduced here).
-
-Two questions this answers:
-  1. Is the observed gene-set overlap more than expected by chance, given
-     each variable's candidate-set size and the ~33,257-gene genome-wide
-     gene universe (remove_duplicates_rm_internalstops_longest_isoform.gff,
-     feature type "gene")? Tested via the hypergeometric distribution
-     (upper-tail P(X >= observed overlap)) for each pairwise comparison --
-     the standard test for "do two gene sets share more members than
-     expected if they were drawn independently from the same universe."
-  2. Is the overlap an artifact of the DEINVI_00006:44-49Mb inversion
-     region (previously identified as a structure-confounded region that
-     produced spuriously correlated association signal across many
-     phenotypes before kinship correction was fixed -- see
-     select_peak_labels.R's header)? Answered by reporting what fraction
-     of the shared genes fall inside vs outside that region.
+Overlap of the per-variable candidate gene sets in gene_summary_all.tsv
+(BIO15, BIO18, fog):
+  1. pairwise hypergeometric tests (upper tail, P(X >= observed overlap))
+     against the genome-wide gene universe (GFF "gene" features);
+  2. fraction of shared genes inside vs outside the DEINVI_00006:44-49 Mb
+     putative inversion.
 
 Usage: python3 gene_overlap_across_variables.py
 Writes:
@@ -43,9 +27,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 
-GEMMA_DIR = "/private/groups/meyerlab/esteiger/selection/gemma"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+GEMMA_DIR = f"{BASE_DIR}/selection/gemma"
 GENE_SUMMARY = f"{GEMMA_DIR}/gene_summary_all.tsv"
-GFF = "/private/groups/meyerlab/esteiger/genome/remove_duplicates_rm_internalstops_longest_isoform.gff"
+GFF = f"{BASE_DIR}/genome/remove_duplicates_rm_internalstops_longest_isoform.gff"
 VARS = ["BIO15", "BIO18", "fog"]
 INVERSION_SCAFFOLD = "DEINVI_00006"
 INVERSION_START, INVERSION_END = 44_000_000, 49_000_000
@@ -143,16 +129,13 @@ def main():
                         len(flags), "Y" if in_inversion(g) else ""])
     print(f"Wrote {GEMMA_DIR}/gene_overlap_shared_genes.tsv")
 
-    # --- 3-set Venn diagram (manual, since matplotlib-venn isn't installed) ---
+    # --- 3-set Venn diagram (drawn manually; matplotlib-venn not installed) ---
     fig, ax = plt.subplots(figsize=(7, 6))
     centers = {"BIO15": (-0.7, 0.4), "BIO18": (0.7, 0.4), "fog": (0, -0.5)}
     colors = {"BIO15": "#4D4D4D", "BIO18": "#969696", "fog": "#1A1A1A"}
     radius = 1.5
     centroid = (sum(c[0] for c in centers.values()) / 3, sum(c[1] for c in centers.values()) / 3)
-    # Variable-name titles sit entirely outside the circles (no collision
-    # risk with in-circle counts); "only this variable" counts sit inside
-    # the lobe farthest from the other two circles (2*center - centroid
-    # lands just inside this circle only, verified against both others).
+    # names outside the circles; single-variable counts at 2*center - centroid
     name_pos = {"BIO15": (-1.5, 2.2), "BIO18": (1.5, 2.2), "fog": (0, -2.3)}
     for v in VARS:
         ax.add_patch(Circle(centers[v], radius, alpha=0.45, facecolor=colors[v],
@@ -167,17 +150,9 @@ def main():
     import math
 
     def pairwise_only_label_pos(a, b, c, r):
-        """Point inside the A/B-only lens (in both A and B, outside C) --
-        NOT just an arbitrary offset from the A/B midpoint, since for
-        circles this size/spacing that midpoint (and small nudges off it)
-        can still fall inside C, i.e. in the triple-overlap zone instead
-        of the true pairwise-only region (the original bug here).
-        Finds the two A/B circle-circle intersection points analytically,
-        keeps the one farther from C's center (that's the one outside C
-        -- the near one sits on the triple-overlap boundary), then
-        returns the midpoint between the A/B center-midpoint and that far
-        intersection point for a safe interior margin rather than sitting
-        right on the lens tip."""
+        """Label position inside the A/B-only region (in A and B, outside C):
+        part way from the A/B center-midpoint toward the A/B circle
+        intersection point farther from C."""
         ax_, ay_ = a
         bx_, by_ = b
         cx_, cy_ = c
@@ -189,10 +164,7 @@ def main():
         p1 = (mx + h * ux, my + h * uy)
         p2 = (mx - h * ux, my - h * uy)
         far = max([p1, p2], key=lambda p: math.hypot(p[0] - cx_, p[1] - cy_))
-        # 65% of the way from the A/B center-midpoint to the far
-        # intersection point -- the exact midpoint (t=0.5) is technically
-        # outside C but only by a few percent of the radius, too close to
-        # C's boundary to read clearly on the rendered figure.
+        # t = 0.5 sits too close to C's boundary
         t = 0.65
         return (mx + t * (far[0] - mx), my + t * (far[1] - my))
 
@@ -211,11 +183,9 @@ def main():
     ax.set_ylim(-2.9, 2.9)
     ax.set_aspect("equal")
     ax.axis("off")
-    # no title (context goes in the caption); cropped closely to the drawing
     print(f"Venn context for the caption: max pairwise environmental Pearson r = 0.54; "
           f"gene universe n={gene_universe_n}")
-    # the (hidden) axes are larger than the drawing, so trim the saved image to
-    # its non-white content plus a small margin
+    # crop the saved image to its non-white content plus a margin
     from PIL import Image, ImageChops
     png = f"{GEMMA_DIR}/gene_overlap_venn.png"
     fig.savefig(png, dpi=200)

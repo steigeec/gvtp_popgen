@@ -24,7 +24,7 @@ H2 differential germination / early mortality (time, germination-year fog
   place count.
 Nulls (one-sided, H1/H2 predict positive slopes):
   - permutation: H1 long-term fog shuffled among units; H2 June fog shuffled
-    among plants within units (~ shuffling years within units) -- N_PERM.
+    among plants within units (~ shuffling years within units); N_PERM permutations.
   - random SNPs: fog-polarized random SNPs (temporal null cache, one per 2 kb
     region), frequency-matched (+-FREQ_TOL within the site). chr 6: each SNP
     is one null draw. Polygenic: each draw averages one matched random SNP
@@ -33,9 +33,7 @@ Nulls (one-sided, H1/H2 predict positive slopes):
   - chr 6 only, centromere-matched random SNPs: as above, but drawn at a
     similar distance from their own scaffold's centromere as the chr 6 peak
     is from the chr 6 centromere (temporal_null.cen_band; same cache and
-    band as fog_peaks_temporal.py / DEINVI_0006_stacked.py), since the peak
-    sits ~0.6 Mb from the centromere, where low recombination can make
-    allele frequencies more variable.
+    band as fog_peaks_temporal.py / DEINVI_0006_stacked.py).
 
 Usage: fog_hypothesis_tests.py
 Output: OUT_TSV (tests), OUT_FIG (plot), OUT_BY_YEAR (H2 per-cohort values), printed summary
@@ -49,10 +47,12 @@ import matplotlib.pyplot as plt
 
 import temporal_null as tn
 
-G = "/private/groups/meyerlab/esteiger/selection/gemma"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+G = f"{BASE_DIR}/selection/gemma"
 OUTLIERS = f"{G}/fog/outliers_for_annot_40000_3_fog.txt"
 DOSAGE = f"{G}/fog/dosage_fog.txt"
-FIELD = "/private/groups/meyerlab/esteiger/field_data.txt"
+FIELD = f"{BASE_DIR}/field_data.txt"
 NULL_CACHE = f"{G}/fog/temporal_null_random_snps_allsamples.tsv.gz"
 OUT_TSV = f"{G}/fog/fog_hypothesis_tests.tsv"
 OUT_FIG = f"{G}/fog/fog_hypothesis_tests.jpg"

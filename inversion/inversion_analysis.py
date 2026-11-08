@@ -1,25 +1,17 @@
 #!/usr/bin/env python3
 """
-Combined gene-density / repeat-content / boundary analysis for the candidate
-inversion region on DEINVI_00006, vs. the rest of the genome.
+Gene density, repeat content and boundary analysis for the candidate inversion
+INV1 (~43.0-49.3 Mb) on DEINVI_00006, vs. the rest of the genome.
 
-This merges what used to be three separate scripts (gene_density_analysis.py,
-repeat_analysis.py, boundary_analysis.py) into one, so that the genome FASTA
-and the (very large) RepeatMasker .out file are each parsed exactly once and
-shared across sections instead of being re-read per script.
-
-DEINVI_00006 carries TWO adjacent putative inversions:
-  - INV2 (not the region of interest): ~13.0-43.0 Mb
-  - INV1 (the region of interest):      ~43.0-49.3 Mb
-INV2 is excluded from the "background" comparison group below (rather than
-silently folded into "rest of DEINVI_00006"), since it is presumably also
-non-recombining and would otherwise contaminate the control group.
+DEINVI_00006 carries a second, adjacent putative inversion (INV2, ~13.0-43.0 Mb),
+which is excluded from the chr 6 background comparison group.
 
 Sections:
-  1. Shared parameters & parsing (genome FASTA, GFF genes, RepeatMasker .out)
+  1. Shared parameters and parsing (genome FASTA, GFF genes, RepeatMasker .out)
   2. Gene density analysis
   3. Repeat / TE content analysis
   4. Fine-scale boundary analysis
+Output: OUT_DIR (plots, tables, window tables for DEINVI_0006_stacked.py)
 """
 
 import numpy as np
@@ -30,21 +22,23 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from scipy import stats
 
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
 # ════════════════════════════════════════════════════════════════════════════
 # 1. Shared parameters & parsing
 # ════════════════════════════════════════════════════════════════════════════
 
-GFF        = "/private/groups/meyerlab/esteiger/genome/remove_duplicates_rm_internalstops_longest_isoform.gff"
-FASTA      = "/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked"
-RM_OUT     = "/private/groups/meyerlab/esteiger/inversions/gene_density/DEINVI_genome.fasta.LTRfix.out"
+GFF        = f"{BASE_DIR}/genome/remove_duplicates_rm_internalstops_longest_isoform.gff"
+FASTA      = f"{BASE_DIR}/genome/DEINVI_genome.fasta.masked"
+RM_OUT     = f"{BASE_DIR}/inversions/gene_density/DEINVI_genome.fasta.LTRfix.out"
 CHROM      = "DEINVI_00006"
-LD_START   = 43_000_000   # bp -- INV1 (region of interest)
+LD_START   = 43_000_000   # bp, INV1
 LD_END     = 49_300_000   # bp
-INV2_START = 13_000_000   # bp -- INV2 (second, adjacent putative inversion; not of interest)
+INV2_START = 13_000_000   # bp, INV2
 INV2_END   = 43_000_000   # bp
 WIN_SIZE   = 500_000      # 500 kb windows for the genome-wide sliding-window plots
-GAP_MB     = 0.2          # tiny visual gap drawn between the INV2 and INV1 grey boxes
-OUT_DIR    = "/private/groups/meyerlab/esteiger/inversions/gene_density"
+GAP_MB     = 0.2          # visual gap between the INV2 and INV1 grey boxes
+OUT_DIR    = f"{BASE_DIR}/inversions/gene_density"
 
 REGION_COLOR = {"INV1": "#e07b54", "INV2": "#9b59b6", "background": "#4a8db5"}
 
@@ -97,7 +91,7 @@ genes["length"] = genes["end"] - genes["start"] + 1
 print(f"  {len(genes):,} genes parsed")
 
 
-# ── 1c. Parse RepeatMasker .out ONCE (shared by repeat & boundary sections) ──
+# ── 1c. Parse RepeatMasker .out (shared by repeat & boundary sections) ───────
 def broad_class(cls):
     c = cls.split("/")[0] if "/" in cls else cls
     if c == "LTR":
@@ -116,7 +110,7 @@ def broad_class(cls):
     if c == "DNA":
         return "DNA"
     if c == "RC":
-        return "DNA"       # rolling-circle (Helitron) -> lump with DNA
+        return "DNA"       # rolling-circle (Helitron) lumped with DNA
     if c == "PLE":
         return "DNA"
     if c == "rRNA":
@@ -152,7 +146,7 @@ with open(RM_OUT) as fh:
         line = line.rstrip()
         if not line:
             continue
-        # Strip trailing asterisk (overlapping lower-score hit) -- exclude from coverage
+        # trailing asterisk = overlapping lower-score hit; excluded from coverage
         if line.endswith("*"):
             continue
         parts = line.split()
@@ -185,8 +179,8 @@ in_bg = ~in_ld & ~in_inv2
 
 ld_genes = chrom6_genes[in_ld]
 inv2_genes = chrom6_genes[in_inv2]
-bg_genes = chrom6_genes[in_bg]          # true background: chr6 excluding BOTH inversions
-non_ld_genes = chrom6_genes[~in_ld]     # kept for backwards-compat summary row only
+bg_genes = chrom6_genes[in_bg]          # background: chr6 excluding both inversions
+non_ld_genes = chrom6_genes[~in_ld]     # chr6 outside INV1 (includes INV2)
 other_genes = genes[genes["chrom"] != CHROM]
 
 ld_size = LD_END - LD_START
@@ -286,7 +280,7 @@ print("\nStatistical comparison (window-level, Mann-Whitney U):")
 ld_win = gd_win_df[gd_win_df["region"] == "INV1"]["density"]
 inv2_win = gd_win_df[gd_win_df["region"] == "INV2"]["density"]
 bg_win = gd_win_df[gd_win_df["region"] == "background"]["density"]
-non_ld_win = gd_win_df[gd_win_df["region"] != "INV1"]["density"]   # old (contaminated) comparison, kept for reference
+non_ld_win = gd_win_df[gd_win_df["region"] != "INV1"]["density"]   # chr6 outside INV1 (includes INV2)
 
 u_stat, p_val = stats.mannwhitneyu(ld_win, bg_win, alternative="two-sided")
 print(f"  INV1 windows:        mean = {ld_win.mean():.2f} genes/Mb, n = {len(ld_win)}")
@@ -362,8 +356,8 @@ in_bg = ~in_ld & ~in_inv2
 
 ld_rm = chrom6_rm[in_ld]
 inv2_rm = chrom6_rm[in_inv2]
-bg_rm = chrom6_rm[in_bg]        # true background: chr6 excluding BOTH inversions
-non_ld_rm = chrom6_rm[~in_ld]   # kept for backwards-compat reference only
+bg_rm = chrom6_rm[in_bg]        # background: chr6 excluding both inversions
+non_ld_rm = chrom6_rm[~in_ld]   # chr6 outside INV1 (includes INV2)
 
 
 def repeat_fraction(df, size_bp):
@@ -412,7 +406,7 @@ rep_win_df = pd.DataFrame(windows)
 rep_win_df["region"] = rep_win_df.apply(classify_region, axis=1)
 rep_x = rep_win_df["mid"].values / 1e6
 
-# ── Plot: stacked area -- repeat class composition along DEINVI_00006 ────────
+# ── Plot: stacked area, repeat class composition along DEINVI_00006 ─────────
 print("Generating plot: stacked repeat composition along DEINVI_00006...")
 fig, ax = plt.subplots(figsize=(14, 5))
 ax.axvspan(LD_START / 1e6, LD_END / 1e6, alpha=0.15, color="#e07b54", zorder=0)
@@ -539,7 +533,7 @@ print("\nStatistical comparisons (Mann-Whitney U, window-level total repeat %):"
 ld_win = rep_win_df[rep_win_df["region"] == "INV1"]["total"]
 inv2_win = rep_win_df[rep_win_df["region"] == "INV2"]["total"]
 bg_win = rep_win_df[rep_win_df["region"] == "background"]["total"]
-non_ld_win = rep_win_df[rep_win_df["region"] != "INV1"]["total"]   # old (contaminated) comparison, kept for reference
+non_ld_win = rep_win_df[rep_win_df["region"] != "INV1"]["total"]   # chr6 outside INV1 (includes INV2)
 
 u, p = stats.mannwhitneyu(ld_win, bg_win, alternative="two-sided")
 print(f"  INV1:                mean={ld_win.mean():.1f}%, n={len(ld_win)}")
@@ -606,9 +600,7 @@ box_whisker_plot(
     u, p,
 )
 
-# ── LINE-specific analysis -- LINE content is ~3.5x enriched in INV1
-#    (3.2% vs 0.9% background / 1.1% rest-of-genome), a much larger
-#    fold-difference than any other repeat class ─────────────────────────────
+# ── LINE-specific analysis ─────────────────────────────────────────────────────
 print("\nGenerating LINE-specific plots...", flush=True)
 
 fig, ax = plt.subplots(figsize=(14, 4))
@@ -655,9 +647,7 @@ box_whisker_plot(
     show_legend=False,
 )
 
-# ── Satellite-specific analysis -- checked because gene-poor, TE-enriched
-#    regions are sometimes (peri)centromeric; satellite content here is
-#    actually LOWER than background, arguing against that ────────────────────
+# ── Satellite-specific analysis ────────────────────────────────────────────────
 print("\nGenerating satellite-specific plots...", flush=True)
 
 fig, ax = plt.subplots(figsize=(14, 4))
@@ -712,16 +702,9 @@ print(f"\nWindow tables saved to {OUT_DIR}/{{gene_density,repeat}}_windows_{CHRO
 # ════════════════════════════════════════════════════════════════════════════
 # 4. Fine-scale boundary analysis
 # ════════════════════════════════════════════════════════════════════════════
-# Looks for sharp compositional transitions and shared TE families at both
-# breakpoints (~43 Mb and ~49.3 Mb).
-#
-# NOTE: DEINVI_00006 carries a SECOND, adjacent putative inversion (INV2,
-# ~13.0-43.0 Mb) immediately upstream of the region of interest (INV1). The
-# left boundary analyzed here (~43 Mb) is therefore the shared breakpoint
-# between INV2 and INV1, not a boundary between INV1 and neutral background.
-# The "outside"/flanking reference used for the left-boundary TE family
-# enrichment calculation below is INV2 interior sequence, not background --
-# see the caveat printed at that step.
+# Compositional transitions and shared TE families at both breakpoints
+# (~43 Mb and ~49.3 Mb). The left boundary is shared with INV2, so its
+# "outside" flank is INV2 interior sequence, not background.
 
 BOUNDARY_WIN_SIZE = 50_000    # 50 kb fine-scale windows
 FLANK = 3_000_000             # +/-3 Mb around each boundary
@@ -845,7 +828,7 @@ print("\n-- TE family enrichment at boundaries --")
 fam_b1 = boundary_families(chrom6_rm, LD_START, f"left boundary (~{LD_START/1e6:.1f} Mb)")
 fam_b2 = boundary_families(chrom6_rm, LD_END, f"right boundary (~{LD_END/1e6:.1f} Mb)")
 
-# ── Shared enriched families at BOTH boundaries ──────────────────────────────
+# ── Shared enriched families at both boundaries ──────────────────────────────
 shared = set(fam_b1.index) & set(fam_b2.index)
 print(f"\n-- Families enriched at BOTH boundaries ({len(shared)} found) --")
 if shared:
@@ -887,15 +870,7 @@ plt.close()
 print(f"  Saved: {out5}")
 
 # ── Zoomed-in, family-resolved view of the boundary enrichment signal ────────
-# The enrichment table above is real (20-200x), but it is a LOCAL, narrow
-# (+/-500kb), FAMILY-specific signal -- diluted away in the boundary plot
-# because that plot averages whole broad classes (Gypsy/Copia/Other all
-# lumped) over a wide 50kb x +/-3Mb view, where genome-typical background
-# from those same classes elsewhere in the flank swamps the local spike.
-# This plot narrows the window (10 kb) and flank (+/-1 Mb) and adds a rug of
-# the exact element positions for the top enriched families, so the local
-# cluster is visible directly rather than inferred from an averaged
-# composition curve.
+# 10 kb windows, +/-1 Mb, with a rug of element positions for the top enriched families
 print("\nGenerating zoomed-in boundary enrichment plot (10 kb windows, +/-1 Mb, top families)...")
 
 ZOOM_WIN = 10_000

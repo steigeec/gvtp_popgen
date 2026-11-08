@@ -1,4 +1,10 @@
 #!/usr/bin/env Rscript
+# Germination-year tests for a variable's 40000_3 outlier peaks in Strauss: per-peak ANOVA and
+# regression of favorable-allele dosage on germination-year values, focal peak plots, and a
+# polygenic score across peaks.
+# Usage: Rscript germ_year_polygenic.R <var_name> <long_term_col> <germ_yr_col>
+
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 3) {
@@ -9,7 +15,7 @@ var_name       <- args[1]
 long_term_col  <- args[2]
 germ_yr_col    <- args[3]
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs")
+.libPaths(file.path(BASE_DIR, "software/R_libs"))
 library(data.table)
 library(ggplot2)
 library(dplyr)
@@ -34,8 +40,8 @@ base_theme <- theme_minimal() +
 MIN_SNPS_POLYGENIC <- 30
 N_FOCAL_PEAKS      <- 5
 
-base_dir     <- "/private/groups/meyerlab/esteiger/selection/gemma"
-env_file     <- "/private/groups/meyerlab/esteiger/env_var.txt"
+base_dir     <- file.path(BASE_DIR, "selection/gemma")
+env_file     <- file.path(BASE_DIR, "env_var.txt")
 scaffold_map <- file.path(base_dir, "scaffold_snp_map.txt")
 out_dir      <- file.path(base_dir, var_name)
 
@@ -109,9 +115,8 @@ cat("Dosage matrix:", nrow(dosage), "individuals x", ncol(dosage), "SNPs\n")
 env <- fread(env_file, header = TRUE, sep = "\t")
 env$SampleID <- as.character(env$SampleID)
 # 13 individuals have untrustworthy coordinates (Location="Strauss" but
-# Clusters assigned to Point_Conception/VAFB_Lion_Head; see
-# gvtp_popgen/wind/wind_aem_rda_hybrid.R) -- excluded throughout, including
-# from allele polarization
+# Clusters assigned to Point_Conception/VAFB_Lion_Head); excluded throughout,
+# including from allele polarization
 BAD_COORD_IDS <- c("4548", "4549", "4550", "4551", "4552", "4553", "4554",
                    "4555", "4556", "4557", "4559", "4561", "4562")
 env <- env[!env$SampleID %in% BAD_COORD_IDS, ]
@@ -325,10 +330,7 @@ if (length(peak_rep_snps) >= MIN_SNPS_POLYGENIC) {
   print(tukey)
 
   # ── Directed test: is poly_score higher in the highest-germ_env year? ───────
-  # One-sided (not just "do years differ") since the hypothesis has a
-  # direction: the favorable allele should be more common in the year with
-  # more germination-season exposure. High year determined from the data
-  # itself (mean germ_env per year), not hardcoded.
+  # One-sided; the high year is the year with the highest mean germ_env
   year_means <- df %>% group_by(Year) %>% summarise(mean_germ_env = mean(germ_env), .groups = "drop")
   cat("\n-- Mean", germ_yr_col, "by Year --\n")
   print(year_means)

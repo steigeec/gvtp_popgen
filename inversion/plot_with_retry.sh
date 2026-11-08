@@ -1,10 +1,11 @@
 #!/bin/bash
-# Escalating-interval retry for small_chromplot.py, matching the same
-# fallback pattern winPCA.sh uses for stock `winpca chromplot`: try with no
-# interval first, and if that attempt hangs/fails, retry with progressively
-# larger -i values until one succeeds within the per-attempt timeout.
+# Run small_chromplot.py with no interval first, then retry with increasing -i
+# values until one attempt finishes within PER_ATTEMPT_TIMEOUT.
+# Usage: plot_with_retry.sh <prefix> <chrom:start-end> <out.png> <legend.png> [small_chromplot.py args]
 
 set -u
+
+BASE_DIR=/private/groups/meyerlab/esteiger
 
 PREFIX=$1        # e.g. DEINVI_00006_GL_maf5
 REGION=$2        # e.g. DEINVI_00006:500000-70016456
@@ -13,7 +14,7 @@ LEGEND_OUT=$4     # legend png path
 shift 4
 EXTRA_ARGS=("$@") # e.g. -m metadata.tsv -g fog --numeric
 
-SCRIPT=/private/groups/meyerlab/esteiger/gvtp_popgen/inversion/small_chromplot.py
+SCRIPT=${BASE_DIR}/gvtp_popgen/inversion/small_chromplot.py
 PER_ATTEMPT_TIMEOUT=600   # 10 min per attempt
 
 for interval in "" 5 10 15 20 25 30; do

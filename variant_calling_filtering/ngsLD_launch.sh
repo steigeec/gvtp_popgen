@@ -8,6 +8,10 @@
 #SBATCH --time=168:00:00              # long max is 14 days * 24 hrs = 168 hrs; medium is 
 #SBATCH --output=serial_test_%j.log   # Standard output and error log
 
-cd /private/groups/meyerlab/esteiger/variant_calling/ngsLD
+# Run ngsLD.sh on each per-scaffold GL file.
 
-find . -name "DEINVI_*.tsv.gz" | parallel -j 4 "./ngsLD.sh {} &> {}.out"
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+cd ${BASE_DIR}/variant_calling/ngsLD
+
+find . -name "DEINVI_*.tsv.gz" | parallel -j 4 "${BASE_DIR}/gvtp_popgen/variant_calling_filtering/ngsLD.sh {} &> {}.out"

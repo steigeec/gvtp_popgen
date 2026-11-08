@@ -1,13 +1,19 @@
 #!/bin/bash
+# After ngsParalog: build autosomal site lists (with and without MAF filter),
+# the paralog/MAF-filtered beagle and BCF, per-scaffold ngsLD inputs for >4x
+# Strauss individuals (then launches ngsLD_launch.sh), launch BEAGLE imputation,
+# and a chloroplast site list.
 
-ANGSD_DIR="/private/groups/meyerlab/esteiger/variant_calling/angsd"
-PARA_DIR="/private/groups/meyerlab/esteiger/variant_calling/ngsParalog"
-ANGSD="/private/groups/meyerlab/esteiger/software/angsd_dev/angsd"
-MITO="/private/groups/meyerlab/esteiger/genome/mito.txt"
-CHLORO="/private/groups/meyerlab/esteiger/genome/chloroplast.txt"
-BAMLIST="/private/groups/meyerlab/esteiger/mapping/merged/bamlist.txt"
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+ANGSD_DIR="${BASE_DIR}/variant_calling/angsd"
+PARA_DIR="${BASE_DIR}/variant_calling/ngsParalog"
+ANGSD="${BASE_DIR}/software/angsd_dev/angsd"
+MITO="${BASE_DIR}/genome/mito.txt"
+CHLORO="${BASE_DIR}/genome/chloroplast.txt"
+BAMLIST="${BASE_DIR}/mapping/merged/bamlist.txt"
 BEAGLE="${ANGSD_DIR}/noMAF_preParalog.beagle.gz"
-SCRIPTS_DIR="/private/groups/meyerlab/esteiger/gvtp_popgen/variant_calling_filtering"
+SCRIPTS_DIR="${BASE_DIR}/gvtp_popgen/variant_calling_filtering"
 
 # ---------------------------------------------------------------------------
 echo "=== Generate autosomal sites (exclude chloroplast & mitochondrial scaffolds) ==="
@@ -20,10 +26,8 @@ echo "  -> $(wc -l < ${ANGSD_DIR}/postParalog_MAF_auto.sites) autosomal sites in
 
 # ---------------------------------------------------------------------------
 echo "=== Generate autosomal sites (no MAF filter; exclude chloroplast & mitochondrial scaffolds) ==="
-# awk excludes mito/chloro scaffolds and any malformed lines where the chromosome field
-# contains an uppercase letter after position 0 (catches sort-induced line concatenations
-# like DEINVI_00007DEINVI_00007). sort -k1,1 -k2,2n ensures numeric position order
-# required by ANGSD indexing and tabix.
+# the regex drops malformed concatenated lines (e.g. DEINVI_00007DEINVI_00007);
+# ANGSD sites index and tabix need position-sorted input
 awk 'NR==FNR{exclude[$1]=1; next} !($1 in exclude) && $1 !~ /[0-9][A-Z]/' \
     <(cat "$CHLORO" "$MITO") \
     "${ANGSD_DIR}/postParalog.sites" \
@@ -70,18 +74,18 @@ echo ""
 echo "=== Create beagle subset to ONLY Strauss individuals >4x ==="
 echo "=== For LD computation and filtering... ==="
 
-INDS_4X="/private/groups/meyerlab/esteiger/mapping/merged/bamlist_4x_strauss.txt"
+INDS_4X="${BASE_DIR}/mapping/merged/bamlist_4x_strauss.txt"
 BEAGLE_FILTER="${SCRIPTS_DIR}/./beagle_filter_individuals.sh"
 zcat "${ANGSD_DIR}/postParalog_MAF_auto.beagle.gz" > "${ANGSD_DIR}/postParalog_MAF_tmp.beagle" &
 wait
 "$BEAGLE_FILTER" "$INDS_4X" "${ANGSD_DIR}/postParalog_MAF_tmp.beagle" "${ANGSD_DIR}/postParalog_strauss_4x.beagle"
 echo "  -> $(wc -l < ${ANGSD_DIR}/postParalog_strauss_4x.beagle) lines (including header) in postParalog_strauss_4x.beagle"
-# Really quickly... I will also need the full set of 4x individuals for PCs going into GEMMA!
-INDS_4X="/private/groups/meyerlab/esteiger/mapping/merged/bamlist_4x.txt"
+# all >4x individuals, for the PCs used as GEMMA covariates
+INDS_4X="${BASE_DIR}/mapping/merged/bamlist_4x.txt"
 "$BEAGLE_FILTER" "$INDS_4X" "${ANGSD_DIR}/postParalog_MAF_tmp.beagle" "${ANGSD_DIR}/postParalog_4x.beagle"
-rm "${ANGSD_DIR}/postParalog_strauss_tmp.beagle"
+rm "${ANGSD_DIR}/postParalog_MAF_tmp.beagle"
 
-NGSLD_DIR="/private/groups/meyerlab/esteiger/variant_calling/ngsLD"
+NGSLD_DIR="${BASE_DIR}/variant_calling/ngsLD"
 mkdir -p "$NGSLD_DIR"
 
 echo "  Creating per-chromosome genotype likelihood TSVs for ngsLD..."
@@ -98,8 +102,7 @@ echo "  -> $(ls ${NGSLD_DIR}/*.tsv | wc -l) chromosome TSV files created"
 echo "  Gzipping TSVs and launching ngsLD..."
 cd "$NGSLD_DIR"
 find . -name "*.tsv" | parallel -j 100 gzip
-sbatch ./ngsLD_launch.sh
-
+sbatch "${SCRIPTS_DIR}/ngsLD_launch.sh"
 
 # ---------------------------------------------------------------------------
 echo ""
@@ -112,41 +115,26 @@ bcftools view "${ANGSD_DIR}/noMAF_preParalog.bcf" \
 bcftools index "${ANGSD_DIR}/postParalog_MAF_auto.bcf"
 echo "  -> $(bcftools view -H ${ANGSD_DIR}/postParalog_MAF_auto.bcf | wc -l) sites in postParalog_MAF_auto.bcf"
 
-#  imputation
 cd "$ANGSD_DIR"
 sbatch ${SCRIPTS_DIR}/imputation.sh "${ANGSD_DIR}/postParalog_MAF_auto.bcf"
 
-# Create >4x subset of VCF!
-FOUR="/private/groups/meyerlab/esteiger/mapping/merged/bamlist_4x.txt"
+# >4x subset of the imputed VCF
+FOUR="${BASE_DIR}/mapping/merged/bamlist_4x.txt"
 VCF1="postParalog_MAF_auto_GLimp.vcf"
-tabix -p vcf /private/groups/meyerlab/esteiger/variant_calling/angsd/postParalog_MAF_auto_GLimp.vcf.gz
+tabix -p vcf ${BASE_DIR}/variant_calling/angsd/postParalog_MAF_auto_GLimp.vcf.gz
 bcftools view -S ${FOUR} -O v -o postParalog_MAF_4x_GLimp.vcf ${VCF1}
 # remove invariable sites
 bcftools view -c 1:minor postParalog_MAF_4x_GLimp.vcf -Ov -o postParalog_MAF_4x.variable.vcf
 mv postParalog_MAF_4x.variable.vcf postParalog_MAF_4x_GLimp.vcf
 
-
-
-
-
-
-
-
-
-
-
-
-
 # ---------------------------------------------------------------------------
 echo ""
 echo "=== Create chloroplast site list (paralog-filtered, no MAF filter) ==="
-CHLORO_OUTDIR="/private/groups/meyerlab/esteiger/structure/Fst/chloroplast"
+CHLORO_OUTDIR="${BASE_DIR}/structure/Fst/chloroplast"
 mkdir -p "$CHLORO_OUTDIR"
 grep -Ff "$CHLORO" "${PARA_DIR}/postParalog.sites" \
   > "${CHLORO_OUTDIR}/chloroplast.sites"
 echo "  -> $(wc -l < ${CHLORO_OUTDIR}/chloroplast.sites) chloroplast sites"
 
 # ---------------------------------------------------------------------------
-
-
 

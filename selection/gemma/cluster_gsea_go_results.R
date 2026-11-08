@@ -1,40 +1,22 @@
 #!/usr/bin/env Rscript --vanilla
 
-# Reduces GSEA_GO.R's raw per-term output (GSEA_GO_results_<var>_{BP,MF,CC}.tsv
-# -- hundreds of GO terms, many nested parent/child chains driven by
-# substantially the same underlying gene(s) via propagation) down to one
-# representative term per semantically-distinct cluster, using the same
-# rrvgo approach top_nominal_GO_hits.R already applies to the threshold-
-# based (goseq) track. GSEA_GO_results is already clean of non-plant and
-# housekeeping terms (GSEA_GO.R drops both BEFORE testing, not just from
-# the report), so this script only needs to select + cluster, not re-filter.
-#
-# No FDR-significant terms exist in this dataset (min padj ~0.37-0.67
-# across all three ontologies and all three environmental variables, per
-# GSEA_GO.R's own printed summary) -- this is a nominal/hypothesis-
-# generating selection (raw p < P_NOMINAL_MAX), explicitly not a
-# substitute for the FDR-based result, matching the same caveat
-# top_nominal_GO_hits.R carries for its own track.
-#
-# Combines all three ontologies into ONE output table (not three separate
-# ones, and not BP-only) with an Ontology column -- restricting to BP would
-# have hidden real hits that only show up in MF/CC (e.g. this dataset's
-# "photoreceptor activity" MF term, which is one of the most mechanistically
-# specific hits in the whole set, alongside the BP-level light-signaling
-# terms it corroborates).
+# Selects GSEA_GO.R terms at a nominal threshold (raw p < p_max, default 0.05)
+# and reduces redundant GO terms with rrvgo (per ontology, Wang similarity),
+# keeping one representative term per cluster. BP, MF and CC are written to
+# one table with an ontology column.
 #
 # Usage: Rscript cluster_gsea_go_results.R <var_name> [output_dir] [p_max]
 #   e.g. Rscript cluster_gsea_go_results.R fog fog
 # Expects GSEA_GO_results_<var_name>_{BP,MF,CC}.tsv (GSEA_GO.R output) in
-# output_dir (default: same directory this is run from, matching
-# GSEA_GO.R's own default output location).
+# output_dir (default: <var_name>).
+# Writes <output_dir>/GSEA_GO_top_nominal_<var_name>.tsv
 
 suppressMessages({
     library(dplyr)
     library(rrvgo)
 })
 
-SIM_THRESHOLD <- 0.7  # same clustering threshold top_nominal_GO_hits.R uses
+SIM_THRESHOLD <- 0.7
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 1) {
@@ -44,7 +26,7 @@ var_name      <- args[1]
 output_dir    <- if (length(args) >= 2) args[2] else var_name
 P_NOMINAL_MAX <- if (length(args) >= 3) as.numeric(args[3]) else 0.05
 
-# --- Load + combine all three ontologies ---
+# --- Load and combine all three ontologies ---
 all_res <- list()
 for (GROUP in c("BP", "MF", "CC")) {
     infile <- file.path(output_dir, paste0("GSEA_GO_results_", var_name, "_", GROUP, ".tsv"))
@@ -63,8 +45,7 @@ combined <- do.call(rbind, all_res)
 combined <- combined[!is.na(combined$pval), ]
 print(paste0(nrow(combined), " terms loaded across ", length(all_res), " ontologies"))
 
-# --- Nominal selection, per ontology (rrvgo's calculateSimMatrix requires a
-# single ont at a time -- can't mix BP/MF/CC terms in one similarity matrix) ---
+# --- Nominal selection and rrvgo reduction, one ontology at a time (required by calculateSimMatrix) ---
 reduced_list <- list()
 n_pooled <- 0
 for (GROUP in names(all_res)) {

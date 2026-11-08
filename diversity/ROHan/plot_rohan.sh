@@ -1,7 +1,6 @@
 #!/bin/bash
-# =============================================================================
-# plot_rohan.sh — Run rohan_plot.R after collect_rohan.sh completes
-# =============================================================================
+# plot_rohan.sh
+# Run roh_plot.R after collect_rohan.sh completes.
 
 #SBATCH --job-name=ROHan_plot
 #SBATCH --partition=short
@@ -13,4 +12,6 @@
 
 set -euo pipefail
 
-Rscript /private/groups/meyerlab/esteiger/gvtp_popgen/diversity/ROHan/rohan_plot.R
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+Rscript ${BASE_DIR}/gvtp_popgen/diversity/ROHan/roh_plot.R

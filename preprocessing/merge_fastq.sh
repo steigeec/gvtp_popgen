@@ -1,10 +1,12 @@
 #!/bin/bash
+# Concatenate a sample's trimmed R1/R2/S fastq files across sequencing runs and
+# remove the per-run files once the merged files pass gzip -t.
+# Usage: merge_fastq.sh <sample_ID>
 
 ID=$1
 
 cd /public/groups/meyerlab/esteiger/PreProcessing/trimmed_reads || exit 1
 
-# Find files matching the patterns
 filesR1=$(find . -type f -name "${ID}*_R1_clean.fastq.gz")
 filesR2=$(find . -type f -name "${ID}*_R2_clean.fastq.gz")
 filesS=$(find . -type f -name "${ID}*_S_clean.fastq.gz")
@@ -13,7 +15,6 @@ echo -e "Found R1 files: ${filesR1}"
 echo -e "Found R2 files: ${filesR2}"
 echo -e "Found S files: ${filesS}"
 
-# Concatenate files
 cat $filesR1 >> "${ID}_R1_clean.fastq.gz"
 cat $filesR2 >> "${ID}_R2_clean.fastq.gz"
 cat $filesS >> "${ID}_S_clean.fastq.gz"
@@ -25,7 +26,6 @@ if [[ -f "${ID}_R1_clean.fastq.gz" && -f "${ID}_R2_clean.fastq.gz" && -f "${ID}_
    gzip -t "${ID}_S_clean.fastq.gz" 2>/dev/null; then
     echo "All clean files for $ID are valid. Removing original files..."
 
-    # Iterate over each list of files and remove them
     for file in $filesR1; do
         rm -f "$file" && echo "Removed $file"
     done

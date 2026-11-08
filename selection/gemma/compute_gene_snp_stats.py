@@ -1,26 +1,16 @@
 #!/usr/bin/env python3
 """
-Computes, per gene in gene_list_<var>_unfiltered.txt, how many outlier SNPs
-actually linked to it and their minimum Bonferroni-tested p-value -- for
-gene_summary_all.tsv's SNP_Count/Min_P_Value columns.
+Per gene in gene_list_<var>_unfiltered.txt: number of linked outlier SNPs and
+their minimum p-value (lead SNP), for the SNP_Count/Min_P_Value columns of
+gene_summary_all.tsv.
 
-Minimum (not mean) because linked SNPs are often not independent -- the
-LD-tagged intergenic ones in particular, by construction, come from the
-same LD block as one real signal -- so averaging would dilute a gene with
-one strong hit plus several correlated marginal ones. Min matches the
-standard GWAS convention of characterizing a locus by its lead SNP.
+SNP-gene linkage follows curate_intergenic_by_ld.py: genic and
+upstream/downstream annotations always link; a SNP annotated only as
+intergenic_region links only if it passed the LD scan at --r2-threshold.
+A SNP linked to two genes counts toward both.
 
-"Linked" uses the exact same rule that built the gene list in the first
-place (imported from curate_intergenic_by_ld.py, not re-derived): genic and
-bounded upstream/downstream_gene_variant annotations link unconditionally;
-a SNP whose only annotation is intergenic_region links only if it passed
-the LD scan at --r2-threshold. A SNP touching two genes at once (e.g.
-upstream of one, downstream of another) counts toward both.
-
-p_final is GEMMA's own genomic-control-corrected p-value (raw p_lrt if no
-correction was needed), column 11 (0-indexed 10) of
-unfiltered_outliers_for_annot_<var>.txt -- the same value find_outliers.R
-compares against the Bonferroni threshold.
+p-value: column 11 (p_final) of unfiltered_outliers_for_annot_<var>.txt,
+the value find_outliers.R compares against the Bonferroni threshold.
 
 Usage:
   python3 compute_gene_snp_stats.py <var_name> --ld-curation-dir DIR [--r2-threshold 0.5]
@@ -30,10 +20,12 @@ import argparse
 import sys
 from collections import defaultdict
 
-sys.path.insert(0, "/private/groups/meyerlab/esteiger/gvtp_popgen/selection/gemma")
+sys.path.insert(0, f"{BASE_DIR}/gvtp_popgen/selection/gemma")
 from curate_intergenic_by_ld import GENE_TOKEN_RE, load_gff_resolver, resolve_to_gene, load_linked_positions
 
-GEMMA_DIR = "/private/groups/meyerlab/esteiger/selection/gemma"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+GEMMA_DIR = f"{BASE_DIR}/selection/gemma"
 
 
 def load_scaffold_snp_map(path):
@@ -96,10 +88,7 @@ def main():
 
         for s in subs:
             if s[1] != "intergenic_region":
-                # s[4] (Gene_ID) only -- see curate_intergenic_by_ld.py's
-                # matching fix for why scanning the whole entry (s joined
-                # back with "|") picks up Feature_ID transcript stems
-                # (e.g. "g1478.t2") as spurious extra gene calls.
+                # Gene_ID subfield only; Feature_ID stems (e.g. "g1478.t2") match unrelated genes
                 for tok in GENE_TOKEN_RE.findall(s[4]):
                     gid = (resolve_to_gene(tok, gene_ids_gff, tx2gene) or tok).rstrip(".")
                     gene_snps[gid].add((chrom, pos))

@@ -14,8 +14,11 @@
 #   tranquillon_landfire.lcp  Tranquillon Mtn samples plus 2.5 km on each side
 #
 # LFPS needs an email with each request; pass it in LFPS_EMAIL.
-# Env:    internet access (login node), GDAL (windninja conda env),
-#         R with terra >= 1.8 (R_libs_windscape)
+# Conda env: windninja
+#   conda create -n windninja -c conda-forge windninja=3.13.0.1
+#   (also provides GDAL: gdalwarp, gdal_translate, gdallocationinfo)
+# Also needs internet access (login node) and R with terra >= 1.8
+# (R_libs_windscape).
 # Usage:  LFPS_EMAIL=you@example.edu bash build_landfire_lcp.sh
 set -euo pipefail
 

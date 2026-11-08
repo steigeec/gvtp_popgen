@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # Author : Diana Aguilar
 '''
-SNP windows of feature
+Watterson's theta, pairwise theta and Tajima's D in windows of a fixed number of SNPs,
+from ANGSD thetaStat per-site output.
+Usage: Tajimas_SNPmidpoint.py <thetas.persite.txt> <out_file> <snps_per_window> <n_individuals>
 '''
 import math
 import sys

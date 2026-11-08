@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """
 Map of sampling stands (field_data.txt OHANA_order), one panel per genetic
-cluster (Clusters), to check how stands are laid out in space. Each plant is
-a point coloured by stand, with one label per stand (its number, in the same
-colour) at the stand's median position. Tranquillon Mtn (Strauss) gets a
-larger panel. Stands are as recorded in field_data.txt (no splitting).
-The 13 individuals with untrustworthy coordinates (BAD_COORD_IDS; see
-gvtp_popgen/wind/wind_aem_rda_hybrid.R) are left out.
+cluster, with plants coloured and labelled by stand. Tranquillon Mtn
+(Strauss) gets a larger panel. The 13 individuals with unreliable
+coordinates (BAD_COORD_IDS) are left out.
 
 Usage: stand_map.py
 Output: OUT
@@ -19,8 +16,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
 
-FIELD = "/private/groups/meyerlab/esteiger/field_data.txt"
-OUT = "/private/groups/meyerlab/esteiger/env/stand_map.jpg"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+FIELD = f"{BASE_DIR}/field_data.txt"
+OUT = f"{BASE_DIR}/env/stand_map.jpg"
 BAD_COORD_IDS = {"4548", "4549", "4550", "4551", "4552", "4553", "4554",
                  "4555", "4556", "4557", "4559", "4561", "4562"}
 NAMES = {"Strauss": "Tranquillon Mtn", "CDFW": "Gaviota", "Dangermond": "Dangermond",
@@ -43,7 +42,7 @@ def draw(ax, d, title, point_size, label_size):
         g = d[d.OHANA_order == s]
         col = cmap(i % cmap.N)
         ax.scatter(g.Long, g.Lat, s=point_size, color=col, edgecolor="black", linewidth=0.3, zorder=3)
-        # label just above the stand's northernmost plant, so it doesn't hide the points
+        # label above the northernmost plant so it does not cover points
         ax.text(g.Long.median(), g.Lat.max() + 0.02 * half, str(s), color=col, fontsize=label_size,
                 fontweight="bold", ha="center", va="bottom", zorder=4,
                 path_effects=[pe.withStroke(linewidth=3, foreground="white")])

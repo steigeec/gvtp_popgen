@@ -12,6 +12,13 @@
 
 # Refit the pooled FRAME model (strauss_all_maf) at fixed, more strongly
 # smoothed lambda_m values, one per array task, for frame_wind_asymmetry.R.
+# Conda env: frame_e
+#   conda create -n frame_e -c conda-forge python=3.11.9 numpy=1.26.4 \
+#     scipy=1.11.4 scikit-learn=1.5.1 matplotlib=3.10 networkx=3.4.2 \
+#     pyproj=3.6.1 shapely=2.0.6 fiona=1.10.1 cartopy=0.24.1 \
+#     "blas=*=mkl" mkl-service
+#   pip install git+https://github.com/NovembreLab/frame@98abf4b   # FRAME 1.0.0
+#   (run with PYTHONNOUSERSITE=1 so packages in ~/.local are not picked up)
 
 BASE_DIR=/private/groups/meyerlab/esteiger
 

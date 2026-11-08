@@ -1,38 +1,20 @@
 #!/bin/bash
-# =============================================================================
-# resubmit_phase2.sh — periodically resubmit a dependency-free phase2 array
-# to pick up samples whose phase 1 has finished since the last resubmission.
+# resubmit_phase2.sh
+# Resubmit a phase 2 array over all samples to pick up those whose phase 1 has
+# finished. Safe to run while phase 1 is running, since phase 2 only reads
+# hEst.gz and each task skips samples that are not ready or already done.
 #
-# Background: rohan_phase2.sh used to be triggered via a SLURM aftercorr
-# dependency on phase1, but that proved unreliable at this array size (see
-# rohan_phase2.sh / launch_rohan.sh headers) — most elements never left
-# "Dependency" state even days after their phase-1 counterpart finished.
-# The fix was to drop the dependency entirely: rohan_phase2.sh now
-# self-validates (checks its sample's hEst.gz) and exits 0 cleanly if phase 1
-# isn't done yet, so phase2 just needs to be resubmitted periodically to
-# sweep up newly-finished samples. This script is that periodic sweep.
+# Uses rohan_tasks_all.tsv (all 423 samples), kept separate from
+# rohan_tasks.tsv because phase 1 reads that file by line number.
 #
-# SAFE to run anytime, including while phase1 is still actively running —
-# unlike launch_rohan.sh (which also resubmits phase1 and can conflict with
-# an in-progress phase1 run on the same samples), this script ONLY touches
-# phase2. phase2 only reads hEst.gz, never writes it, so there's no
-# concurrent-write risk with an active phase1 job.
-#
-# Uses rohan_tasks_all.tsv — ALL 423 eligible samples, unconditionally, kept
-# deliberately separate from phase1's rohan_tasks.tsv (which phase1 reads BY
-# LINE NUMBER at dispatch time; mutating it while phase1 still has pending
-# tasks would silently corrupt future dispatches). Every task here
-# self-validates and skips cleanly if its sample isn't phase1-ready or is
-# already done, so re-running this against the full cohort repeatedly is
-# always safe, just occasionally a no-op for a given sample.
-#
-# Usage: bash resubmit_phase2.sh   (intended to run on a schedule — see cron)
-# =============================================================================
+# Usage: bash resubmit_phase2.sh   (run on a schedule, e.g. cron)
 
 set -euo pipefail
 
-OUTDIR=/private/groups/meyerlab/esteiger/diversity/ROH/ROHan
-SCRIPT_DIR=/private/groups/meyerlab/esteiger/gvtp_popgen/diversity/ROHan
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+OUTDIR=${BASE_DIR}/diversity/ROH/ROHan
+SCRIPT_DIR=${BASE_DIR}/gvtp_popgen/diversity/ROHan
 TASK_FILE=$OUTDIR/rohan_tasks_all.tsv
 MAX_CONCURRENT_P2=40
 

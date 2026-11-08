@@ -1,18 +1,12 @@
 #!/usr/bin/env python3
 """
-Genome-wide centromere calls from the centromere-associated LINE family.
+Genome-wide centromere calls from the centromere-associated LINE family
+(CEN_FAMILY), one per scaffold >= MIN_LEN.
 
-In sunflower, centromeres carry a LINE-like repeat found on almost all
-chromosomes. In Deinandra, LINE family CEN_FAMILY (RepeatModeler name) forms
-one tight cluster on nearly every chromosome-scale scaffold, and on
-DEINVI_00006 that cluster is the 45.5-48.0 Mb LINE-rich region.
-
-Per scaffold >= MIN_LEN: CEN_FAMILY bp per WIN window, smoothed over SMOOTH
-windows; centromere = the contiguous run of windows around the densest one
-whose smoothed density is >= FRAC_OF_PEAK of the peak. A call is "confident"
-if >= MIN_CONC of the scaffold's CEN_FAMILY bp lie within +-FLANK of the
-call and the peak window holds >= MIN_PEAK_BP. Arm lengths are measured from
-the call's edges to the scaffold ends.
+Centromere = contiguous run of windows around the densest one whose smoothed
+CEN_FAMILY density is >= FRAC_OF_PEAK of the peak. "Confident" if >= MIN_CONC
+of the scaffold's CEN_FAMILY bp lie within +-FLANK of the call and the peak
+window holds >= MIN_PEAK_BP.
 
 Usage: call_centromeres.py
 Output: OUT (one row per scaffold), OUT_WIN (window densities)
@@ -23,10 +17,12 @@ import subprocess
 import numpy as np
 import pandas as pd
 
-RM_OUT = "/private/groups/meyerlab/esteiger/inversions/gene_density/DEINVI_genome.fasta.LTRfix.out"
-FAI = "/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.fai.gz"
-OUT = "/private/groups/meyerlab/esteiger/inversions/centromere/centromeres.tsv"
-OUT_WIN = "/private/groups/meyerlab/esteiger/inversions/centromere/cen_family_windows.tsv"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+RM_OUT = f"{BASE_DIR}/inversions/gene_density/DEINVI_genome.fasta.LTRfix.out"
+FAI = f"{BASE_DIR}/genome/DEINVI_genome.fasta.fai.gz"
+OUT = f"{BASE_DIR}/inversions/centromere/centromeres.tsv"
+OUT_WIN = f"{BASE_DIR}/inversions/centromere/cen_family_windows.tsv"
 CEN_FAMILY = "rnd-1_family-362"
 MIN_LEN, WIN, SMOOTH = 10e6, 500_000, 3
 FRAC_OF_PEAK, FLANK, MIN_CONC, MIN_PEAK_BP = 0.2, 2e6, 0.4, 5_000

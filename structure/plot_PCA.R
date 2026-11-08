@@ -1,6 +1,12 @@
 #!/usr/bin/env Rscript
+# plot_PCA.R
+# PCA, scree, map and IBD plots from a PCAngsd run (covariance matrix found via its log).
+# R library: BASE_DIR/software/R_libs/
+# Usage: Rscript plot_PCA.R <path_to.log>
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs/")
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
+
+.libPaths(file.path(BASE_DIR, "software/R_libs/"))
 library(ggplot2)
 library(sf)
 library(patchwork)
@@ -63,7 +69,7 @@ out_name <- sub("^angsd_paralog_LD_", "", out_name)
 
 # Derive bamlist: try matching subset name, fall back to beagle name, then 4x
 beagle_base <- sub("\\.beagle\\.gz$", "", basename(beagle_path))
-bamlist_dir <- "/private/groups/meyerlab/esteiger/mapping/merged"
+bamlist_dir <- file.path(BASE_DIR, "mapping/merged")
 beagle_suffix <- sub("^(angsd_paralog_LD_|postParalog_)", "", beagle_base)
 beagle_suffix <- sub("_miss[0-9]+$", "", beagle_suffix)
 beagle_suffix_nold <- sub("_LD$", "", beagle_suffix)
@@ -83,13 +89,13 @@ cat("Filtered:", has_filter, "\n")
 cat("Bamlist:", bamlist_path, "\n")
 
 # Load population metadata
-pop <- read.table("/private/groups/meyerlab/esteiger/field_data.txt", header=T, sep="\t")
+pop <- read.table(file.path(BASE_DIR, "field_data.txt"), header=T, sep="\t")
 pop$Location <- as.factor(pop$Location)
 pop$Year <- as.factor(pop$Year)
 pop$Cov <- as.numeric(pop$Cov)
 
 # Load study area shapefile for maps
-CA <- st_read("/private/groups/meyerlab/esteiger/env/study_area/GVTP_clip.shp", quiet=TRUE)
+CA <- st_read(file.path(BASE_DIR, "env/study_area/GVTP_clip.shp"), quiet=TRUE)
 
 # Read bamlist to get sample order
 sample_order <- read.table(bamlist_path, header=F, sep="\t")
@@ -195,9 +201,7 @@ if (is_year1) {
 }
 
 if (is_year1) {
-  # geom_point draws points in row order, so put Dangermond last to render
-  # it on top of the other clusters -- it has very few samples and is easy
-  # to lose under a larger cluster's overplotted points otherwise.
+  # Plot Dangermond last so its few points are not hidden under other clusters
   data2 <- data2[order(data2$Clusters == "Dangermond"), ]
 }
 

@@ -1,25 +1,32 @@
 #!/bin/bash
+# run_PCAngsd.sh
+# Write per-subset sample filter files (1 = include, in bamlist_4x.txt order) and
+# submit PCAngsd on the full LD-pruned dataset and each subset.
+# Usage: bash run_PCAngsd.sh
+# Conda env: PCAngsd
+#   conda create -n PCAngsd -c conda-forge python numpy scipy cython \
+#     c-compiler cxx-compiler scikit-allel plotly python-kaleido
+#   pip install -e <clone of https://github.com/Rosemeis/pcangsd>   # PCAngsd 1.36.0
+export BASE_DIR=/private/groups/meyerlab/esteiger
 
-SCRIPT_DIR="/private/groups/meyerlab/esteiger/gvtp_popgen/structure"
-cd /private/groups/meyerlab/esteiger/structure/PCAngsd
+SCRIPT_DIR="${BASE_DIR}/gvtp_popgen/structure"
+cd ${BASE_DIR}/structure/PCAngsd
 
-# Create filter files based on bamlist_4x.txt sample order
-# Each filter has 1 row per sample in bamlist_4x.txt: 1=include, 0=exclude
 Rscript - <<'EOF'
-pop <- read.table("/private/groups/meyerlab/esteiger/field_data.txt", header=T, sep="\t")
+pop <- read.table(file.path(Sys.getenv("BASE_DIR"), "field_data.txt"), header=T, sep="\t")
 pop$file <- paste0(pop$SampleID, "_rmdup.bam")
 pop <- unique(pop[,c("SampleID", "Cov", "index", "file", "Location", "Year")])
 
-bam4x <- read.table("/private/groups/meyerlab/esteiger/mapping/merged/bamlist_4x.txt", header=F)
+bam4x <- read.table(file.path(Sys.getenv("BASE_DIR"), "mapping/merged/bamlist_4x.txt"), header=F)
 bam4x$bam_index <- seq(1, nrow(bam4x))
 
 merged <- merge(bam4x, pop, by.x="V1", by.y="file")
 merged <- merged[order(merged$bam_index),]
 
-year1_bams <- read.table("/private/groups/meyerlab/esteiger/mapping/merged/bamlist_year1.txt", header=F)$V1
-strauss_bams <- read.table("/private/groups/meyerlab/esteiger/mapping/merged/bamlist_strauss.txt", header=F)$V1
-cdfw_bams <- read.table("/private/groups/meyerlab/esteiger/mapping/merged/bamlist_CDFW.txt", header=F)$V1
-coastal_bams <- read.table("/private/groups/meyerlab/esteiger/mapping/merged/bamlist_coastal.txt", header=F)$V1
+year1_bams <- read.table(file.path(Sys.getenv("BASE_DIR"), "mapping/merged/bamlist_year1.txt"), header=F)$V1
+strauss_bams <- read.table(file.path(Sys.getenv("BASE_DIR"), "mapping/merged/bamlist_strauss.txt"), header=F)$V1
+cdfw_bams <- read.table(file.path(Sys.getenv("BASE_DIR"), "mapping/merged/bamlist_CDFW.txt"), header=F)$V1
+coastal_bams <- read.table(file.path(Sys.getenv("BASE_DIR"), "mapping/merged/bamlist_coastal.txt"), header=F)$V1
 
 # > 4x for Year 1
 merged$year1 <- ifelse(merged$V1 %in% year1_bams & merged$Cov > 4, 1, 0)

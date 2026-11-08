@@ -1,20 +1,14 @@
 #!/bin/bash
-# =============================================================================
-# prep_samples.sh — Filter samples and subsample high-coverage BAMs for ROHan
+# prep_samples.sh
+# Select samples with coverage > 3x (excluding outlier 4531) and downsample BAMs
+# above 6x to 6x (fixed seed). BAMs between 3x and 6x are used as is.
 #
-# Reads field_data.txt and:
-#   - Retains samples with coverage > 3x (excluding outlier 4531)
-#   - Subsamples BAMs with coverage > 6x down to 6x (fixed seed for
-#     reproducibility; samtools view -s uses seed.fraction format)
-#   - Leaves BAMs with 3x < coverage <= 6x at native depth
-#
-# Outputs:
-#   samples_gt3x.tsv    — sample, original coverage, orig BAM, analysis BAM
-#   bamlist_rohan.txt   — analysis-ready BAM paths (input for launch_rohan.sh)
-#   subsampled_bams/    — directory of downsampled BAMs + indices
+# Outputs (in OUTDIR):
+#   samples_gt3x.tsv    sample, original coverage, original BAM, analysis BAM
+#   bamlist_rohan.txt   analysis BAM paths
+#   subsampled_bams/    downsampled BAMs and indices
 #
 # Run before estimate_rohmu.sh and launch_rohan.sh.
-# =============================================================================
 
 #SBATCH --job-name=prep_rohan
 #SBATCH --partition=long
@@ -26,10 +20,12 @@
 
 set -euo pipefail
 
-BAMDIR=/private/groups/meyerlab/esteiger/mapping/merged
-FIELD_DATA=/private/groups/meyerlab/esteiger/field_data.txt
-OUTDIR=/private/groups/meyerlab/esteiger/diversity/ROH/ROHan
-FAI=/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked.fai
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+BAMDIR=${BASE_DIR}/mapping/merged
+FIELD_DATA=${BASE_DIR}/field_data.txt
+OUTDIR=${BASE_DIR}/diversity/ROH/ROHan
+FAI=${BASE_DIR}/genome/DEINVI_genome.fasta.masked.fai
 SUBSAMPLE_DIR=$OUTDIR/subsampled_bams
 TARGET_COV=6
 SEED=42
@@ -37,7 +33,7 @@ N_PARALLEL=${SLURM_NTASKS:-4}
 
 mkdir -p "$SUBSAMPLE_DIR"
 
-# Regenerate scaffold list (>= 1 Mb) in case it's stale
+# Scaffolds >= 1 Mb
 awk '$2 >= 1000000 {print $1}' "$FAI" > "$OUTDIR/scaffolds_1mb_names.txt"
 
 # --- Build sample table: cov > 3x, excluding 4531 ----------------------------
@@ -73,7 +69,6 @@ process_sample() {
     fi
 
     if [[ "$final_bam" != "$orig_bam" ]]; then
-        # Subsample to TARGET_COV
         local frac s_arg
         frac=$(awk -v c="$cov" -v t="$TARGET_COV" 'BEGIN {printf "%.6f", t/c}')
         s_arg="${SEED}${frac#0}"   # samtools format: integer_seed.fraction (e.g. 42.183275)

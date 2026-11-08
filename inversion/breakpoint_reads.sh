@@ -8,18 +8,19 @@
 #SBATCH --time=4:00:00
 #SBATCH --output=/private/groups/meyerlab/esteiger/inversions/breakpoints/logs/bp_reads_%A_%a.log
 
-# Read-level inversion-breakpoint evidence on DEINVI_00006 for ONE sample
-# (array task N = line N of samples.txt; written by breakpoint_samples.py's
-# output via: cut -f3 breakpoint_samples.tsv | tail -n +2 | sort -u).
+# Read-level inversion-breakpoint evidence on DEINVI_00006 for one sample
+# (array task N = line N of samples.txt, made from breakpoint_samples.py output:
+# cut -f3 breakpoint_samples.tsv | tail -n +2 | sort -u).
+# Usage: sbatch --array=1-<n samples> breakpoint_reads.sh
 #
 # Output: reads/<sample>.tsv, one line per read (MAPQ >= 20, primary only):
 #   type  pos  strand  other_pos  other_strand  qname
-#   PAIR  -- paired read whose mate maps on DEINVI_00006 > MIN_DIST away on the
-#            SAME strand (inward-facing pairs become same-strand across an
-#            inversion breakpoint). Both mates are written; a pair counts
-#            only if both appear (i.e. both have MAPQ >= 20).
-#   SPLIT -- read with a supplementary/secondary part (SA tag, part MAPQ >= 20)
-#            on DEINVI_00006 > MIN_DIST away on the OPPOSITE strand.
+#   PAIR   paired read whose mate maps on DEINVI_00006 > MIN_DIST away on the
+#          same strand (inward-facing pairs become same-strand across an
+#          inversion breakpoint). Both mates are written; a pair counts only
+#          if both appear (both MAPQ >= 20).
+#   SPLIT  read with a supplementary/secondary part (SA tag, part MAPQ >= 20)
+#          on DEINVI_00006 > MIN_DIST away on the opposite strand.
 # plus reads/<sample>.count: number of primary MAPQ >= 20 reads on the scaffold
 # (for depth normalization).
 #
@@ -29,8 +30,10 @@
 
 set -euo pipefail
 
-OUT=/private/groups/meyerlab/esteiger/inversions/breakpoints
-BAM_DIR=/private/groups/meyerlab/esteiger/mapping/merged
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+OUT=${BASE_DIR}/inversions/breakpoints
+BAM_DIR=${BASE_DIR}/mapping/merged
 CHROM=DEINVI_00006
 MIN_DIST=20000
 

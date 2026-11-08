@@ -1,4 +1,9 @@
-setwd("/private/groups/meyerlab/esteiger/diversity/He/population")
+# Population expected heterozygosity from folded SFS (.ml) files, and comparison
+# with nucleotide diversity across plant taxa (Leffler et al. dataset).
+
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
+
+setwd(file.path(BASE_DIR, "diversity/He/population"))
 
 populations <- c("cdfw", "lionhead", "strauss", "arguello", "Dangermond", "conception")
 
@@ -27,7 +32,7 @@ for (pop in populations) {
   # Proportion of all sites (variable + invariable) in each polymorphic bin
   site_freqs <- a[-1] / sum(a)
 
-  # Expected heterozygosity: sigma( 2p(1-p) * f ) across all frequency classes
+  # Expected heterozygosity: sum of 2p(1-p) * f across frequency classes
   theta <- sum(2 * freqs * (1 - freqs) * site_freqs)
 
   results <- rbind(results, data.frame(population = pop, heterozygosity = theta,
@@ -36,7 +41,6 @@ for (pop in populations) {
 }
 
 print(results)
-# write.csv(results, "population_heterozygosity.csv", row.names = FALSE)  # commented out while iterating on comparison plot
 
 ## --- Compare nucleotide diversity across taxa (Leffler et al. plant dataset) ---
 

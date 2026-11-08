@@ -1,24 +1,26 @@
 #!/bin/bash
+# ind_het.sh
+# Per-individual heterozygosity: angsd -dosaf, then folded SFS with realSFS.
+# Usage: ind_het.sh <sample.bam>   (called by launch_He.sh)
+BASE_DIR=/private/groups/meyerlab/esteiger
 
-cd "/private/groups/meyerlab/esteiger/mapping/merged/"
+cd "${BASE_DIR}/mapping/merged/"
 
 file1=$1
 suffix=".bam"
 string=${file1%"$suffix"}
 echo "processing $string"
 
-OUT="/private/groups/meyerlab/esteiger/diversity/He/individual"
-ref="/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked"
+OUT="${BASE_DIR}/diversity/He/individual"
+ref="${BASE_DIR}/genome/DEINVI_genome.fasta.masked"
 # all autosomal sites (variable + invariable) post-paralog-filter; no MAF filter
-sites="/private/groups/meyerlab/esteiger/selection/TajD/all_sites"
+sites="${BASE_DIR}/selection/TajD/all_sites"
 # Restricted to the 23 chromosome-scale scaffolds (the natural size break in the
-# assembly, consistent with 1N=12 for this diploid species; captures 82% of the
-# post-paralog-filtered genome). angsd's -rf/-sites intersection pays a large
-# fixed per-scaffold setup cost, so using the full 21,073-scaffold list (mostly
-# tiny unplaced fragments) made -dosaf take ~5-6 hours/sample; restricting to
-# these 23 scaffolds cut that to ~2 minutes in testing, with no change to what
-# -sites allows to be emitted (excluded scaffolds were never in -sites anyway).
-chrs="/private/groups/meyerlab/esteiger/selection/TajD/top23_chrs.txt"
+# assembly, consistent with 1N=12; 82% of the post-paralog-filter genome).
+# angsd's -rf/-sites intersection has a large per-scaffold setup cost, so the
+# full 21,073-scaffold list took ~5-6 h/sample versus ~2 min for these 23.
+# Excluded scaffolds have no sites in -sites, so output is unchanged.
+chrs="${BASE_DIR}/selection/TajD/top23_chrs.txt"
 NTHREADS=${NTHREADS:-3}
 
 if [ ! -s "${OUT}/${string}.saf.gz" ]; then
@@ -28,5 +30,5 @@ if [ ! -s "${OUT}/${string}.saf.gz" ]; then
     echo "done with dosaf"
 fi
 
-RS="/private/groups/meyerlab/esteiger/software/angsd/misc/realSFS"
+RS="${BASE_DIR}/software/angsd/misc/realSFS"
 ${RS} ${OUT}/${string}.saf.idx -fold 1 -P ${NTHREADS} > ${OUT}/${string}.ml

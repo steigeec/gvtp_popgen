@@ -1,91 +1,38 @@
 # phenotype_data.R
 #
-# Consolidated 2026-09-07 from modern_data.R + historic_data.R (kept as
-# separate files no longer — this is the single source of truth for both
-# analyses now). All modern-dataset analysis runs first, then all
-# historic-dataset analysis, then a combined a/b/c/d summary figure at
-# the very end (Section 11) built from panels captured along the way:
-#   a: Height:width ratio response curve (modern)
-#   b: Proportion ray florets response surface (modern)
-#   c: BIO18-over-time pooled LOESS (historic)
-#   d: Ray/disk floret counts over time (historic)
+# Phenotype-environment analyses of Deinandra specimens. The modern dataset is
+# analysed first, then the historic dataset, then the combined figures
+# (Sections 11-12).
 #
-# Below this header: modern_data.R's original content, unchanged except
-# for the run_phenotype() panel-capture additions (see Section 5) and
-# the run_phenotype() same-N-across-candidates fix (see 2026-09-07
-# comment there), then historic_data.R's original content, unchanged
-# except for the Section 11 combined-figure addition at the very end.
+# Modern section: for specimens with a computable env window (germination
+# year 2009-2024), fits all additive and pairwise-interaction combinations of
+# fog and BIO18 (20-year rolling means ending in the germination year; see
+# extract_pheno_env_data.R Section 15) and CWD_25yr (fixed 2000-2025 mean),
+# each with (1 | Locality), against Count_disk_flourets, Count_ray_flourets,
+# Count_total_florets, ray_prop (ray / total florets), Height_in, Width_in and
+# Height_width, and ranks candidate models by AICc.
+#
+# Inputs:  BASE_DIR/pheno/gtinatandvars.csv,
+#          inatrays.csv, emma_gee_results_final.csv; env/env_wi_range.csv
+# Outputs: pheno/modern_data_output/ and pheno/historic_data_output/
+#            model_selection_report.csv (top 3 models per phenotype;
+#              p-values uncorrected, exploratory)
+#            response_plot_<phenotype>_<rank>.png (models whose intercept
+#              and every term are significant at p < 0.05)
+#          pheno/historic_data_output/ray_disk_over_time.png,
+#            year_trend_report.csv
+#          pheno/phenotype_data_output/ (combined figures)
+#
+# Predictors are z-scored for fitting; response plots refit the formula on the
+# raw variables so axes are in natural units. Poisson fits with Pearson
+# dispersion > 1.4 are refit as negative binomial (glmmTMB nbinom2).
+# Count_ray_flourets combines dissection and iNat-photo counts (validated in
+# ray_count_validation.R). Small localities (Dangermond n=4, CDFW n=6, Agujas
+# n=7, CoastalLompoc n=1) are kept; (1 | Locality) shrinks them toward the
+# grand mean, and every phenotype's 21-model candidate set still converges
+# with all 8 localities included.
 
-# modern_data.R
-#
-# Reworked, self-contained version of the undergrad's modern-specimen GLM
-# analyses (see gvtp_popgen/pheno/modern_models.R, heightmodels.R,
-# updatedvarmodels.R for the original, ad hoc versions this replaces).
-#
-# For every phenotype record with a computable env window (effectively
-# germination year 2009-2024 — see Section 2), fits all additive and
-# interaction combinations of three env variables — fog and BIO18 (summer
-# precip), each a rolling 20-year mean ending in (and including) the
-# specimen's own germination year, not a fixed reference window (see
-# extract_pheno_env_data.R Section 15); and CWD_25yr (climatic water
-# deficit), a fixed-window (2000-2025) per-location mean, added
-# 2026-10-22 after confirming it isn't excessively collinear with fog/
-# BIO18 (Spearman rho 0.52 / -0.61, vs. -0.56 between fog and BIO18
-# themselves) and costs no sample size (populated for every specimen
-# already in the fog/BIO18-eligible set). BIO15 (precip seasonality) was
-# dropped 2026-09-06 — collinear with fog (Spearman rho -0.84 to -0.89
-# depending on window length) beyond this project's 0.7 threshold —
-# against seven response variables:
-#   Count_disk_flourets, Count_ray_flourets, Count_total_florets (disk + ray),
-#   ray_prop (ray / total florets — the pistillate/fertile fraction; disk
-#   florets are functionally staminate), Height_in, Width_in, Height_width
-#   (height:width ratio)
-# ranks the candidate models by AICc, and writes:
-#   modern_data_output/model_selection_report.csv
-#     — one block per phenotype, the best 3 models by AICc weight, with a
-#       row per fixed-effect term (p-value, estimate +/- SE, z/t-score).
-#       Carries a header note caveating that p-values are not corrected
-#       for multiple comparisons (many candidate models/terms) — this is
-#       exploratory model selection, not a confirmatory analysis.
-#   modern_data_output/response_plot_<phenotype>_<rank>.png
-#     — for any of those top-3 models where the intercept AND every fixed
-#       effect is significant (p < 0.05): a 2D contour plot (color = model
-#       prediction) over its two strongest predictors, masked to the
-#       observed data's convex hull; a single-predictor model instead gets
-#       a 1D response curve; a 3+ predictor model facets across the
-#       low/median/high (10th/50th/90th percentile) of its next-strongest
-#       predictor rather than collapsing it to one mean-held slice (any
-#       remaining held predictors beyond that are held at their mean).
-#
-# Env variables are fit on z-scored (mean 0, SD 1) versions for model
-# comparability and to keep interaction terms numerically well-behaved;
-# response-surface plots refit the winning formula on the raw (unscaled)
-# variables purely so the plot axes are in natural, interpretable units
-# (mirrors the original modern_models.R workflow: select on scaled
-# predictors, plot on raw ones).
-#
-# Poisson fits (floret counts) are checked for overdispersion (Pearson
-# dispersion statistic > 1.4, the same threshold the undergrad's scripts
-# used manually via blmeco::dispersion_glmer) and automatically refit as
-# negative binomial (glmmTMB nbinom2) when overdispersed.
-#
-# Count_ray_flourets is a fusion of dissection counts (pheno_file) and
-# iNat-photo counts (inatrays.csv, for specimens with no physical
-# collection — ray count only, never disk count), justified by a paired
-# Wilcoxon test on double-measured specimens (moved to
-# fire_turbine_analyses.R 2026-10-06, alongside the turbine analysis
-# that also depends on iNat ray counts — see that script) showing no
-# significant difference between the two methods.
-#
-# All localities are kept, including small ones (Dangermond n=4, CDFW n=6,
-# Agujas n=7, CoastalLompoc n=1 — a single specimen backfilled from
-# inatrays.csv, see Section 2). The undergrad's original scripts dropped
-# Dangermond/CDFW in most models for statistical reasons (small n); that's
-# exactly what (1 | Locality) as a random effect is designed to handle —
-# a small group just contributes less information and shrinks toward the
-# grand mean, rather than needing to be excluded (confirmed empirically:
-# every phenotype's full 21-model candidate set still converges with all
-# 8 localities included, including the n=1 singleton).
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
 
 suppressMessages({
   library(dplyr)
@@ -98,46 +45,33 @@ suppressMessages({
   library(viridis)
   library(geometry)   # convex hull masking for contour plots
   library(isoband)    # contour-line computation for the labeled raster plots
-  library(patchwork)  # side-by-side panel composition (Section 2c)
+  library(patchwork)  # panel composition
 })
 
 # ============================================================
 # Paths
 # ============================================================
 
-env_file      <- "/private/groups/meyerlab/esteiger/pheno/emma_gee_results_final.csv"
-pheno_file    <- "/private/groups/meyerlab/esteiger/pheno/gtinatandvars.csv"
-inatrays_file <- "/private/groups/meyerlab/esteiger/pheno/inatrays.csv"
-out_dir       <- "/private/groups/meyerlab/esteiger/pheno/modern_data_output"
+env_file      <- file.path(BASE_DIR, "pheno/emma_gee_results_final.csv")
+pheno_file    <- file.path(BASE_DIR, "pheno/gtinatandvars.csv")
+inatrays_file <- file.path(BASE_DIR, "pheno/inatrays.csv")
+out_dir       <- file.path(BASE_DIR, "pheno/modern_data_output")
 dir.create(out_dir, showWarnings = FALSE)
 
 SIG_ALPHA <- 0.05
 N_TOP     <- 3
 
-# Plot styling: no legend (contour-line labels already give exact values),
-# no title/subtitle, no gridlines, human-readable axis names, larger text
-# throughout (contour-line labels bigger still, since they carry the
-# entire "what number is this" job with the legend gone).
+# Plot styling: no legend (contour labels give the values), no title or gridlines.
 AXIS_LABELS <- c(fog_modern = "Percent hours with fog", BIO18_modern = "Summer precip. (mm)",
                   BIO15_modern = "Precip. seasonality", CWD_25yr = "Climatic water deficit (mm)")
 PLOT_BASE_SIZE     <- 20
 CONTOUR_LABEL_SIZE <- 7
-# geom_label()'s `size` is in mm; convert to the pt size it actually
-# renders at (via ggplot2's own mm-to-pt factor) so axis title/text can be
-# set to match it exactly, rather than relying on theme_bw()'s default
-# (smaller, relative-to-base-size) axis text scaling.
+# geom_label()'s `size` is in mm; convert to pt so axis text can match it.
 CONTOUR_LABEL_PT <- CONTOUR_LABEL_SIZE * ggplot2::.pt
 
 # ============================================================
 # 1. Ray-floret count: fuse dissection and iNat-photo counts
-#
-#     Fusing dissection-based Count_ray_flourets with iNat_ray_count
-#     (for specimens with no physical collection) is justified by a
-#     paired Wilcoxon signed-rank test on double-measured specimens —
-#     moved to fire_turbine_analyses.R 2026-10-06 (run that script for
-#     the validation stats; result: not significant, so the two are
-#     treated as interchangeable here — dissection where available,
-#     iNat count otherwise).
+#    (dissection where available, iNat count otherwise)
 # ============================================================
 
 pheno <- read.csv(pheno_file, stringsAsFactors = FALSE)
@@ -146,47 +80,28 @@ pheno$year <- suppressWarnings(as.numeric(pheno$year))
 pheno$Count_ray_flourets <- suppressWarnings(as.numeric(pheno$Count_ray_flourets))
 pheno$iNat_ray_count     <- suppressWarnings(as.numeric(pheno$iNat_ray_count))
 
-# inatrays.csv spells locality names with underscores (e.g. "Point_Conception",
-# "VAFB_Lion_head"); pheno_file doesn't (e.g. "PointConception",
-# "VAFBLionHead") — normalize both so the same physical site collapses to
-# one random-effect level instead of silently splitting into two. Also
-# turns "" into NA (one inatrays.csv row has no locality recorded).
+# inatrays.csv spells localities with underscores ("Point_Conception"),
+# pheno_file does not ("PointConception"); normalize both so one site is one
+# random-effect level. Also turns "" into NA.
 normalize_locality <- function(x) {
   x <- gsub("_", "", x)
-  # as.character() guards against base ifelse()'s zero-length quirk: when
-  # `test` has length 0, ifelse() returns logical(0) regardless of the
-  # yes/no argument types, which breaks bind_rows() when inat_expansion
-  # legitimately has 0 rows (now common, since Section 13 closes most of
-  # the env-data gap upstream, leaving little for this fallback to add).
+  # as.character() guards against ifelse() returning logical(0) on
+  # zero-length input, which breaks bind_rows() when inat_expansion is empty.
   as.character(ifelse(is.na(x) | x == "", NA_character_, x))
 }
 
 # ============================================================
 # 2. Load + merge phenotype and _modern environmental data
 #
-#    pheno_file (gtinatandvars.csv) is the undergrad's original phenotype
-#    source file (received directly from them 2026-09-06; previously this
-#    script used updatedvarsandpheno.csv, a merged bridging table someone
-#    had built from this same file + an older emma_gee_results_final.csv
-#    pass — same 224 specimens, same columns, just without 2 duplicate
-#    rows and without the now-superseded env columns). Its own BIO12/15/18/
-#    fog/CHILI columns predate the current _germyr/_25yr/_<N>yr convention,
-#    so they're ignored here — only phenotype measurements are used; env
-#    values are joined fresh from the current emma_gee_results_final.csv.
-#
+#    Only phenotype measurements are used from pheno_file; its own env
+#    columns are outdated, so env values are joined from
+#    emma_gee_results_final.csv.
 #    Join key: emma_gee_results_final.csv$SampleID ==
 #              gtinatandvars.csv$recordNumber_CollectorNumber
-#    (both are the herbarium/collector record number, or the bare iNat
-#    observation ID for iNat-only records; confirmed by matching against
-#    all_coord_gvtp.csv's Dataset == "PHENO" rows). Not every phenotype
-#    record matches — a few have a collector number recorded as a date
-#    (excluded, not a real ID) or reference a coordinate the extraction
-#    pipeline hadn't processed yet. That coordinate gap (~50 records,
-#    including several the undergrad's original scripts manually excluded
-#    as "weird" — e.g. "233000618", the 8503-8505 range — which turned
-#    out to just be missing env data, not arbitrary drops) is closed by
-#    extract_pheno_env_data.R Section 13; re-run that script first if
-#    emma_gee_results_final.csv predates it.
+#    Records whose collector number is a date are not real IDs and drop out.
+#    Coordinates missing env data are filled by extract_pheno_env_data.R
+#    Section 13; re-run that script first if emma_gee_results_final.csv
+#    predates it.
 # ============================================================
 
 env <- read.csv(env_file, stringsAsFactors = FALSE)
@@ -194,11 +109,8 @@ env$SampleID <- trimws(as.character(env$SampleID))
 env <- distinct(env[, c("SampleID", "fog_modern", "BIO18_modern", "BIO15_modern",
                         "fog_germyr", "BIO18_germyr", "CWD_25yr")])
 
-# No explicit year filter here anymore — env-data availability (fog_modern/
-# BIO18_modern are only non-NA for germYear 2009-2024, the rolling
-# 10-years-inclusive-of-germination-year window's coverage limits;
-# see extract_pheno_env_data.R Section 15) naturally restricts the sample
-# to that range, superseding the old fixed "year > 2000" rule.
+# No year filter: fog_modern/BIO18_modern are only non-NA for germYear
+# 2009-2024 (rolling-window coverage), which restricts the sample.
 modern <- pheno %>%
   filter(!is.na(year)) %>%
   transmute(
@@ -221,11 +133,8 @@ cat(sprintf("After merging with %s: %d records (%d dropped — no matching Sampl
             basename(env_file), nrow(modern),
             sum(!pheno$recordNumber_CollectorNumber[is_modern] %in% env$SampleID)))
 
-# --- iNat-only observations (inatrays.csv — no physical specimen exists,
-#     so only a ray count is possible, never a disk-floret count), folded
-#     in as additional Count_ray_flourets-only records, excluding any
-#     SampleID already represented above to avoid double-counting a
-#     specimen that was measured both ways ---
+# --- iNat-only observations (no physical specimen, so ray count only),
+#     excluding SampleIDs already measured by dissection ---
 
 inat <- read.csv(inatrays_file, stringsAsFactors = FALSE)
 inat$SampleID <- trimws(as.character(inat$inat_Specimen))
@@ -242,11 +151,8 @@ cat(sprintf("iNat-only ray-count records added (inatrays.csv, no matching pheno_
 
 modern <- bind_rows(modern, inat_expansion)
 
-# Backfill a still-missing Locality (e.g. specimen 233000618, blank in
-# pheno_file) from inatrays.csv when available, rather than losing that
-# row to an NA random-effect group — small localities are kept, not
-# dropped, elsewhere in this script (see the locality-exclusion
-# discussion), so a singleton shouldn't be discarded either.
+# Backfill a missing Locality (e.g. specimen 233000618) from inatrays.csv
+# rather than losing the row to an NA random-effect group.
 na_loc <- is.na(modern$Locality)
 if (any(na_loc)) {
   inat_loc_by_id <- setNames(normalize_locality(inat$Locality), inat$SampleID)
@@ -256,32 +162,20 @@ if (any(na_loc)) {
 }
 
 modern$Locality <- droplevels(as.factor(modern$Locality))
-# Ray florets are pistillate/fertile (seed-producing), disk florets are
-# functionally staminate — ray_prop is the biologically meaningful
-# "fertile floret" fraction, and the framing this project's pollinator-
-# attraction/sex-allocation literature comparisons use. Mathematically
-# ray_prop = 1 - disk_prop, so this is a sign-flip of the same beta-
-# regression fit, not a different result (logit(ray_prop) = -logit(disk_prop)).
+# Ray florets are pistillate (fertile), disk florets functionally staminate.
+# ray_prop = 1 - disk_prop, so this is a sign flip of the disk_prop fit.
 modern$ray_prop <- with(modern, Count_ray_flourets / (Count_disk_flourets + Count_ray_flourets))
 modern$Count_total_florets <- with(modern, Count_disk_flourets + Count_ray_flourets)
 
-# z-scored predictors used for model selection. BIO15 (BIO15_modern)
-# dropped again 2026-09-07 after a re-test (2026-09-07, briefly re-added)
-# confirmed the original 2026-09-06 finding: Fog x BIO15 collinearity
-# (Spearman rho -0.84 at a 10yr rolling window, -0.89 at 20yr) makes any
-# BIO15-containing model unstable — e.g. Height:width's top model became
-# "Fog * BIO15" at weight=0.799, but its data points fall almost exactly
-# along one diagonal line in Fog x BIO15 space (barely any real
-# 2-D variation), so that "surface" was mostly extrapolation.
-# CWD (CWD_25yr) added 2026-10-22: a fixed WY2000-2025 per-location mean
-# (not germination-year-rolling like fog/BIO18 — no BCM data exists at
-# the per-germination-year resolution fog/PRISM have), but populated for
-# every specimen already in the fog/BIO18-eligible set, so it costs no
-# sample size. Checked for the same instability BIO15 showed: CWD's
-# correlation with fog (rho=0.52) and BIO18 (rho=-0.61) is no worse than
-# fog-BIO18's own (-0.56), and in practice CWD never wins or meaningfully
-# shifts the Fog+BIO18 coefficients for either focal phenotype (ray_prop,
-# Height_width) — see modern_data_output/model_selection_report.csv.
+# z-scored predictors used for model selection. BIO15 is excluded
+# (Spearman rho with fog -0.84 at a 10yr window, -0.89 at 20yr, above the 0.7
+# threshold): BIO15-containing models were unstable, e.g. a "Fog * BIO15"
+# top model for Height:width whose points lie almost on one diagonal in
+# Fog x BIO15 space, so the surface was mostly extrapolation.
+# CWD_25yr is a fixed WY2000-2025 mean (no per-germination-year BCM data).
+# Its correlation with fog (rho=0.52) and BIO18 (rho=-0.61) is no worse than
+# fog-BIO18's own (-0.56), and it is available for every specimen in the
+# fog/BIO18-eligible set, so it costs no sample size.
 env_vars <- c(Fog = "fog_modern", BIO18 = "BIO18_modern", CWD = "CWD_25yr")
 for (nm in names(env_vars)) {
   modern[[paste0(nm, "_z")]] <- as.numeric(scale(modern[[env_vars[[nm]]]]))
@@ -289,18 +183,10 @@ for (nm in names(env_vars)) {
 z_vars <- paste0(names(env_vars), "_z")   # c("Fog_z","BIO18_z","CWD_z")
 
 # ============================================================
-# 2b. Locality (site) differences in modern floret counts and plant-size
-#     metrics: Kruskal-Wallis omnibus test per phenotype, with Dunn's post
-#     hoc (Bonferroni-corrected) pairwise comparisons for any phenotype
-#     where the omnibus test is significant.
-#
-#     Ported and re-run here (2026-09-24) from the undergrad's original
-#     stattests.R, which ran this on an older phenotype/env file and only
-#     covered the floret-count phenotypes; extended here to also cover
-#     Height_in/Width_in/Height_width, mirroring the GLMM section above.
-#     Restricted to modern (year > 2000) specimens; CDFW and Dangermond
-#     excluded (undersampled — n=20 and n=4 respectively — for a
-#     fixed-effect locality comparison), exactly as in stattests.R.
+# 2b. Locality differences in modern floret counts and plant size:
+#     Kruskal-Wallis per phenotype, Dunn's post hoc (Bonferroni) where
+#     significant. Restricted to year > 2000; CDFW (n=20) and Dangermond
+#     (n=4) excluded as undersampled for a fixed-effect comparison.
 # ============================================================
 
 suppressMessages(library(FSA))   # dunnTest()
@@ -369,16 +255,10 @@ if (nrow(dunn_report_rows) > 0) {
 # ============================================================
 
 # All additive (+) combinations of `vars`, plus pairwise (*) interactions,
-# each with a (1 | Locality) random intercept. The original modern_models.R
-# / heightmodels.R / updatedvarmodels.R combn() loops went all the way to a
-# full-order interaction; with the (formerly 4, now 3) env variables here
-# notably correlated and n ~115-200, higher-order interaction terms were
-# found to be practically unidentifiable (with the earlier 4-variable
-# _25yr/CWD set: the full Fog*BIO18*BIO15*CWD model came out "best" by
-# AICc weight ~1.0 for both height and width, with coefficient SEs 5-10x
-# the estimates — collinearity-driven noise, not signal). Capped at 2-way
-# interactions here for that reason; with only 3 variables now, this cap
-# just excludes the single 3-way interaction term.
+# each with a (1 | Locality) random intercept. Capped at 2-way interactions:
+# with correlated env variables and n ~115-200, higher-order terms are not
+# identifiable (a full 4-way Fog*BIO18*BIO15*CWD model won by AICc weight ~1.0
+# for height and width, with coefficient SEs 5-10x the estimates).
 MAX_INTERACTION_ORDER <- 2
 
 build_formulas <- function(response, vars) {
@@ -393,9 +273,8 @@ build_formulas <- function(response, vars) {
 }
 
 # Pearson dispersion statistic (sum of squared Pearson residuals / residual
-# df) — the same diagnostic the undergrad's modern_models.R computed
-# manually per winning model (via blmeco::dispersion_glmer, "not overdispersed"
-# threshold ~1.4); here it's checked automatically for every Poisson fit.
+# df); > 1.4 is treated as overdispersed (the "not overdispersed" threshold
+# used with blmeco::dispersion_glmer).
 dispersion_stat <- function(model) {
   rp <- residuals(model, type = "pearson")
   sum(rp^2) / df.residual(model)
@@ -415,8 +294,7 @@ fit_one <- function(formula_str, data, family) {
     if (identical(family, "poisson")) {
       disp <- dispersion_stat(m)
       if (is.finite(disp) && disp > DISPERSION_THRESH) {
-        # Overdispersed for a Poisson mean-variance assumption — refit as
-        # negative binomial instead of trusting Poisson SEs/p-values.
+        # Overdispersed: refit as negative binomial.
         cat(sprintf("    overdispersed (%.2f > %.1f), refitting as negative binomial: %s\n",
                     disp, DISPERSION_THRESH, formula_str))
         m <- glmmTMB(as.formula(formula_str), data = data, family = nbinom2(link = "log"))
@@ -443,10 +321,8 @@ fit_all <- function(response, data, family, vars = z_vars) {
   list(models = models[ok], formulas = formulas[ok])
 }
 
-# Custom AICc table (rather than AICcmodavg::aictab, whose S3 methods don't
-# reliably cover glmmTMB) built directly from the AIC()/logLik()/nobs()
-# generics that lme4 and glmmTMB both implement, so counts/glm and beta
-# regressions rank on the same footing.
+# Custom AICc table (AICcmodavg::aictab does not reliably cover glmmTMB),
+# built from AIC()/logLik()/nobs() so glmer, lmer and glmmTMB fits rank together.
 aicc_rank <- function(models) {
   aic <- sapply(models, AIC)
   k   <- sapply(models, function(m) attr(logLik(m), "df"))
@@ -486,11 +362,9 @@ display_name <- function(term) {
 # ============================================================
 # 4. Response-surface / response-curve plotting
 #
-#    Only for models where the intercept AND every fixed effect are
-#    significant at SIG_ALPHA. Refits the model formula on the RAW
-#    (unscaled) env variables (same data subset) so plot axes are in
-#    natural units; the AICc ranking/report above is unaffected by this
-#    refit, which exists only to make the plot interpretable.
+#    Only for models where the intercept and every fixed effect are
+#    significant at SIG_ALPHA. Refits the formula on the raw env variables
+#    (same rows) so plot axes are in natural units.
 # ============================================================
 
 mask_to_hull <- function(grid_xy, obs_xy) {
@@ -499,22 +373,16 @@ mask_to_hull <- function(grid_xy, obs_xy) {
   inhulln(hull, as.matrix(grid_xy))
 }
 
-# A handful of labeled contour lines over a continuous raster, computed
-# directly via isoband (the same contouring engine geom_contour() uses
-# internally) rather than metR/directlabels (neither installed) — avoids
-# geom_contour_filled()'s stepped legend, which doesn't compress to a
-# small plot (one row per bin, easily 8-10 rows). z must be in the
-# expand.grid(x=x_seq, y=y_seq) row order (x fastest); returns
-# list(lines=, labels=) for geom_path()/geom_label(), or NULL if z has no
-# variation to contour (e.g. an entirely-masked facet).
+# A few labeled contour lines over a continuous raster, computed with isoband
+# (metR/directlabels not installed). z must be in expand.grid(x=x_seq,
+# y=y_seq) row order; returns list(lines=, labels=), or NULL if z is constant.
 compute_contour_lines <- function(x_seq, y_seq, z, n_levels = 5, breaks = NULL) {
   if (all(is.na(z))) return(NULL)
   if (is.null(breaks)) breaks <- pretty(range(z, na.rm = TRUE), n = n_levels)
   breaks <- breaks[breaks > min(z, na.rm = TRUE) & breaks < max(z, na.rm = TRUE)]
   if (length(breaks) == 0) return(NULL)
-  # isoband wants z as dim(length(y_seq), length(x_seq)) — i.e. z[i,j] ~
-  # (x_seq[j], y_seq[i]) — the transpose of the column-major reshape that
-  # matches expand.grid(x=x_seq, y=y_seq)'s row order.
+  # isoband wants z as dim(length(y_seq), length(x_seq)), i.e. the transpose
+  # of the expand.grid row order.
   zmat <- t(matrix(z, nrow = length(x_seq), ncol = length(y_seq)))
   iso  <- isoband::isolines(x_seq, y_seq, zmat, levels = breaks)
   lines_df <- bind_rows(lapply(names(iso), function(lvl) {
@@ -523,9 +391,7 @@ compute_contour_lines <- function(x_seq, y_seq, z, n_levels = 5, breaks = NULL) 
     data.frame(x = seg$x, y = seg$y, id = paste(lvl, seg$id), level = as.numeric(lvl))
   }))
   if (is.null(lines_df) || nrow(lines_df) == 0) return(NULL)
-  # one label per level, placed at the point closest to that level's
-  # median x — a simple, reasonably central anchor without an extra
-  # dependency for proper label placement
+  # one label per level, at the point closest to that level's median x
   labels_df <- lines_df %>%
     group_by(level) %>%
     slice(which.min(abs(x - median(x)))) %>%
@@ -534,11 +400,9 @@ compute_contour_lines <- function(x_seq, y_seq, z, n_levels = 5, breaks = NULL) 
 }
 
 # contour_breaks: fixed contour levels (NULL = pretty()); label_size /
-# point_size: contour-label (mm) and point sizes, so the combined figure
-# (Section 12) can call this at its own smaller scale. The surface is shown
-# in black/white (darker = higher predicted value; lightest shade kept well
-# off white so it doesn't merge into the background) and is clipped to the
-# observed range of the trait, as well as to the predictors' convex hull.
+# point_size: contour-label (mm) and point sizes, for use at figure scale
+# (Section 12). Surface is greyscale (darker = higher) and clipped to the
+# observed trait range and the predictors' convex hull.
 plot_response_surface <- function(response, formula_str, data, family, phenotype_label, out_path,
                                   contour_breaks = NULL, label_size = CONTOUR_LABEL_SIZE,
                                   point_size = 1.8) {
@@ -556,8 +420,7 @@ plot_response_surface <- function(response, formula_str, data, family, phenotype
   predictors <- predictors[predictors %in% unname(env_vars)]
 
   # Gaussian models are fit on log(response) but predictions are
-  # back-transformed to the raw response scale below — reflect that in the
-  # plot label so it doesn't still say "(log ...)" next to raw-scale values.
+  # back-transformed, so drop "(log ...)" from the label.
   plot_label <- if (family == "gaussian") sub("\\(log ", "(", phenotype_label) else phenotype_label
 
   pred_fun <- function(newdata) {
@@ -612,18 +475,14 @@ plot_response_surface <- function(response, formula_str, data, family, phenotype
   in_trait  <- function(pred) !is.na(pred) & pred >= trait_rng[1] & pred <= trait_rng[2]
 
   if (length(held_vars) == 0) {
-    # Exactly 2 predictors — single panel, no held variables.
+    # Exactly 2 predictors: single panel, no held variables.
     grid <- base_grid
     grid$pred <- pred_fun(grid)
     grid$pred_masked <- ifelse(grid$in_hull & in_trait(grid$pred), grid$pred, NA)
   } else {
-    # 3+ predictors: facet across low/median/high (10th/50th/90th
-    # percentile) of the single strongest held variable, rather than
-    # collapsing it to one mean-held slice — a slice can hide an
-    # interaction between an axis variable and the held one. Any further
-    # held variables beyond that (rare — MAX_INTERACTION_ORDER keeps most
-    # candidate models to <=3 total predictors) fall back to mean-holding
-    # so the panel count stays at 3 regardless of how many are held.
+    # 3+ predictors: facet across the 10th/50th/90th percentile of the
+    # strongest held variable (a single mean-held slice can hide an
+    # interaction); any further held variables are held at their mean.
     held_coefs   <- coefs %>% filter(term %in% held_vars)
     facet_var    <- held_coefs$term[order(-abs(held_coefs$statistic))][1]
     mean_held    <- setdiff(held_vars, facet_var)
@@ -645,8 +504,7 @@ plot_response_surface <- function(response, formula_str, data, family, phenotype
     grid$pred_masked <- ifelse(grid$in_hull & in_trait(grid$pred), grid$pred, NA)
   }
 
-  # Continuous raster + a few labeled contour lines, computed per facet
-  # (each facet is its own prediction surface) — see compute_contour_lines().
+  # Continuous raster + labeled contour lines, computed per facet.
   x_seq <- sort(unique(base_grid[[axis_vars[1]]]))
   y_seq <- sort(unique(base_grid[[axis_vars[2]]]))
   if (length(held_vars) == 0) {
@@ -669,14 +527,9 @@ plot_response_surface <- function(response, formula_str, data, family, phenotype
 
   p <- ggplot() +
     geom_raster(data = grid, aes(x = .data[[axis_vars[1]]], y = .data[[axis_vars[2]]], fill = pred_masked)) +
-    # Fog/BIO18/BIO15 are rolling-window means computed per germination
-    # year, so many specimens sharing a GermYear (and similar coordinates)
-    # land on the exact same point — a small jitter (~1.5% of each axis's
-    # own range) breaks these apart so the true sample size is visible,
-    # without meaningfully displacing where points fall relative to the
-    # contour surface underneath them. Drawn before the contour lines/
-    # labels below so those render on top and stay legible rather than
-    # getting covered by a point.
+    # Many specimens share a germination year and near-identical
+    # coordinates, so points are jittered (~1.5% of each axis range) to show
+    # the true sample size. Drawn before the contour labels so those stay on top.
     geom_point(data = data, aes(x = .data[[axis_vars[1]]], y = .data[[axis_vars[2]]]),
                shape = 21, fill = "white", color = "black", stroke = 0.4, size = point_size,
                position = position_jitter(width = diff(rng1) * 0.015, height = diff(rng2) * 0.015, seed = 42))
@@ -703,15 +556,10 @@ plot_response_surface <- function(response, formula_str, data, family, phenotype
   invisible(p)
 }
 
-# Alternative to plot_response_surface() for 2+ predictor models, added
-# alongside it (not replacing it) so the two styles can be compared: an
-# "interaction line plot" — the strongest predictor on the x-axis, 2-3
-# colored lines for the second predictor's 10th/50th/90th percentile
-# (a compact, fixed-size 3-swatch legend regardless of plot size, unlike
-# a color gradient), faceted by a 3rd+ held variable exactly like
-# plot_response_surface(). For single-predictor models this would just
-# reproduce the same curve plot_response_surface() already made, so it's
-# skipped there.
+# Interaction line plot alternative to plot_response_surface() for 2+
+# predictor models: strongest predictor on x, lines for the second
+# predictor's 10th/50th/90th percentile, faceted by a held variable.
+# Not used by default (see run_phenotype()).
 plot_response_lines <- function(response, formula_str, data, family, phenotype_label, out_path) {
   raw_formula_str <- formula_str
   for (i in seq_along(z_vars)) raw_formula_str <- gsub(z_vars[i], env_vars[[i]], raw_formula_str, fixed = TRUE)
@@ -802,15 +650,9 @@ report_rows <- list()
 RS_CALLS <- list()   # response-surface calls, by "response rank" (used by Section 12)
 run_phenotype <- function(response, phenotype_label, family, data) {
   cat(sprintf("\n=== %s (%s) ===\n", phenotype_label, response))
-  # Require every candidate variable (not just the ones a given formula
-  # uses) to be non-missing before fitting anything, so every model in
-  # the candidate set is compared on the identical set of rows. Without
-  # this, a variable-poor formula (e.g. "BIO18" alone) silently retains
-  # more rows than a variable-rich one (e.g. "Fog + BIO18") and can win
-  # the AICc comparison on sample size rather than fit — found 2026-09-07
-  # in ray_prop, where an n=159 BIO18-only model (BIO18 itself p=0.084,
-  # not significant) out-weighted the n=138 Fog+BIO18 model where both
-  # terms were significant, simply because it had more data to work with.
+  # Require every candidate variable to be non-missing before fitting, so all
+  # candidate models are compared on identical rows (otherwise AICc favours
+  # models with fewer variables simply because they retain more rows).
   data <- data %>% drop_na(all_of(z_vars))
   data$Locality <- droplevels(data$Locality)
   fit <- fit_all(response, data, family)
@@ -836,16 +678,11 @@ run_phenotype <- function(response, phenotype_label, family, data) {
                                      function(w) if (w %in% c("+", "*")) w else display_name(w)),
                               collapse = " ")
 
-    # Model-level columns (Formula/weight/AICc/DeltaAICc) are populated only
-    # on the model's first row (the intercept) and left blank below it, so
-    # the report reads as one block per model. The intercept is included as
-    # its own "variable" row since its significance is checked anyway (see
-    # all_sig below) and showing it makes each block self-contained.
+    # Model-level columns (Formula/weight/AICc/DeltaAICc) are filled only on
+    # each model's first (intercept) row, so the report reads as one block
+    # per model.
     all_terms <- bind_rows(coefs[coefs$term == "(Intercept)", ], var_coefs)
-    # N is a property of the phenotype's fitted data subset, not of any one
-    # model (every candidate model for a phenotype is fit on the same
-    # drop_na()-filtered rows) — repeated on every row rather than only the
-    # first, since unlike Formula/weight/AICc it doesn't vary within a block.
+    # N is the same for every candidate model of a phenotype; repeated on every row.
     n_obs <- nobs(model)
     for (r in seq_len(nrow(all_terms))) {
       report_rows[[length(report_rows) + 1]] <<- data.frame(
@@ -868,11 +705,8 @@ run_phenotype <- function(response, phenotype_label, family, data) {
       plotted[[as.character(rank)]] <- plot_response_surface(response, fstr, data, family, phenotype_label, out_path)
       RS_CALLS[[paste(response, rank)]] <<- list(formula = fstr, data = data, family = family,
                                                  label = phenotype_label)
-      # plot_response_lines() (the interaction-line-plot alternative) was
-      # tried and dropped: with correlated predictors (common among
-      # fog/BIO18/BIO15/CWD here), fixing one at an extreme percentile
-      # while sweeping the other walks outside the observed data's convex
-      # hull, so 2 of its 3 lines came out nearly or entirely masked away.
+      # plot_response_lines() is not used: with correlated predictors, fixing
+      # one at an extreme percentile leaves most lines outside the convex hull.
     }
   }
   invisible(plotted)
@@ -884,8 +718,7 @@ run_phenotype("Count_ray_flourets", "Count ray florets", "poisson",
               modern %>% drop_na(Count_ray_flourets))
 run_phenotype("Count_total_florets", "Count total florets", "poisson",
               modern %>% drop_na(Count_total_florets))
-# Captured for the combined a/b/c/d figure at the very end of this script
-# (panel_b = ray_prop, panel_a = Height_width) — see PHENOTYPE_DATA_PANELS.
+# Captured for the combined figure (panel_b = ray_prop, panel_a = Height_width).
 PHENOTYPE_DATA_PANELS <- list()
 ray_prop_plots <- run_phenotype("ray_prop", "Proportion ray florets", "beta",
               modern %>% drop_na(ray_prop))
@@ -897,14 +730,9 @@ run_phenotype("log(Width_in)", "Plant width (log inches)", "gaussian",
 height_width_plots <- run_phenotype("Height_width", "Height:width ratio", "gamma",
               modern %>% drop_na(Height_width))
 
-# Panel a forced to the top-ranked "Fog + BIO18" model specifically (per
-# user request 2026-09-07), bypassing the usual all-coefficients-significant
-# plotting rule — that model's intercept isn't significant (p=0.24), which
-# is why run_phenotype() above never plots it on its own (BIO18-alone,
-# rank3, is what qualifies normally). Data subset matches this specific
-# formula's own two predictors (Fog_z, BIO18_z) rather than the full
-# (now 3-variable, CWD-included) z_vars, since this panel was never
-# meant to additionally require CWD_25yr non-NA.
+# Panel a uses the top-ranked "Fog + BIO18" model even though its intercept
+# is not significant (p=0.24), so run_phenotype() does not plot it. Rows are
+# filtered on this formula's own two predictors only.
 hw_panel_a_data <- modern %>% drop_na(Height_width, Fog_z, BIO18_z)
 hw_panel_a_data$Locality <- droplevels(hw_panel_a_data$Locality)
 PHENOTYPE_DATA_PANELS$a <- plot_response_surface(
@@ -914,9 +742,8 @@ PHENOTYPE_DATA_PANELS$a <- plot_response_surface(
 
 # ------------------------------------------------------------
 # Panels B and C of the 6-panel figure (Section 12), drawn here while the
-# modern section's plot_response_surface()/globals are still in effect
-# (the historic section below redefines both). Same models as above, at
-# the combined figure's scale: FIG_PT text, smaller labels/points.
+# modern plot_response_surface() and globals are in effect (the historic
+# section redefines them), at figure scale.
 #   B: Height:width ratio (Fog + BIO18), contour lines at 1-5
 #   C: ray floret proportion (top significant model)
 # ------------------------------------------------------------
@@ -943,15 +770,11 @@ PHENOTYPE_FIG_PANELS$C_data <- rp_call$data
 cat(sprintf("Figure panels B/C drawn (ray_prop model: %s)\n", rp_call$formula))
 
 # ============================================================
-# 5b. Height:width ratio and ray_prop, using germination-year (single
-#     collection-year) env values instead of the 20yr rolling-window
-#     means used above — same two variables (Fog, BIO18), same two
-#     phenotypes, different source columns (fog_germyr/BIO18_germyr vs.
-#     fog_modern/BIO18_modern). Only the top (rank1) model per phenotype
-#     is checked, per user request (2026-09-11) — printed to console
-#     regardless of outcome; plotted and added to the report only if the
-#     intercept AND every coefficient are significant, same rule as
-#     everywhere else in this script.
+# 5b. Height:width ratio and ray_prop with germination-year env values
+#     (fog_germyr/BIO18_germyr) instead of the 20yr rolling means. Only
+#     the rank1 model per phenotype is checked; printed regardless, plotted
+#     and reported only if the intercept and every coefficient are
+#     significant.
 # ============================================================
 
 env_vars_germyr <- c(Fog = "fog_germyr", BIO18 = "BIO18_germyr")
@@ -1016,10 +839,8 @@ run_phenotype_germyr <- function(response, phenotype_label, family, data) {
     )
   }
 
-  # plot_response_surface() reads env_vars/z_vars/AXIS_LABELS as globals —
-  # swap them in temporarily so it can be reused as-is for this germyr
-  # variable set, then restore, so the main (rolling-window) analysis
-  # above is unaffected by this section.
+  # plot_response_surface() reads env_vars/z_vars/AXIS_LABELS as globals;
+  # swap them in temporarily for the germyr variables, then restore.
   old_env_vars <- env_vars; old_z_vars <- z_vars; old_axis_labels <- AXIS_LABELS
   env_vars <<- env_vars_germyr
   z_vars   <<- z_vars_germyr
@@ -1037,20 +858,11 @@ run_phenotype_germyr("ray_prop", "Proportion ray florets", "beta",
 
 # ============================================================
 # 7. Mediation test: do Werner-fog/BIO18 trends over time explain each
-#    floret phenotype's year-trend within the modern dataset?
+#    floret phenotype's year trend within the modern dataset?
 #
-#    Parallel to historic_data.R's mediation section (temporarily
-#    disabled there while this version is built, 2026-09-06), but using
-#    the MODIS-based Werner fog product (fog_modern — the germination-
-#    year rolling window already used above, 2009-2024 coverage) instead
-#    of Kling. Same three floret phenotypes as the historic version
-#    (Count_disk_flourets, Count_ray_flourets, ray_prop); Height/Width/
-#    ratio aren't tested here either, matching that script's scope.
-#
-#    Modern's collection years cluster heavily in 2020-2024 (rather than
-#    spreading evenly over 2009-2024), so a secular trend has much less
-#    time/spread to manifest than historic's ~65yr span — treat any
-#    year-trend finding here as exploratory, same caveat as there.
+#    Uses the MODIS-based Werner fog (fog_modern) instead of Kling.
+#    Collection years cluster in 2020-2024, so treat any year trend here
+#    as exploratory.
 # ============================================================
 
 cat("\n=== Section 7: Mediation test (Werner fog) — do Fog/BIO18 trends over time explain each phenotype's year-trend? ===\n")
@@ -1079,11 +891,9 @@ run_year_trend("ray_prop", "Proportion ray florets", "beta", modern %>% drop_na(
 
 # 7b. Does Werner fog (or BIO18) itself trend over time? Uses
 #     env_wi_range.csv's per-coordinate annual values (fog: 2000-2025;
-#     BIO18: 1927-2024 — the full PRISM archive, same as historic_data.R
-#     uses), locality-capped (15/coordinate, seed 42) per this project's
-#     standard.
+#     BIO18: 1927-2024), capped at 15 per coordinate (seed 42).
 cat("\n--- Env-variable-over-time trend (env_wi_range.csv, locality-capped) ---\n\n")
-range_env <- read.csv("/private/groups/meyerlab/esteiger/pheno/env_wi_range.csv", stringsAsFactors = FALSE)
+range_env <- read.csv(file.path(BASE_DIR, "pheno/env_wi_range.csv"), stringsAsFactors = FALSE)
 set.seed(42)
 range_capped <- do.call(rbind, lapply(split(range_env, range_env$Locality), function(d) {
   if (nrow(d) > 15) d[sample(nrow(d), 15), ] else d
@@ -1156,13 +966,8 @@ report <- bind_rows(report_rows) %>%
 
 report_path <- file.path(out_dir, "model_selection_report.csv")
 
-# Multiple-comparisons caveat: with n_candidate_models candidate models fit
-# per phenotype (all additive + pairwise-interaction combinations of the 4
-# env variables) across 6 phenotypes, this report contains many p-values.
-# None are corrected for multiple comparisons (across models or terms) —
-# this is exploratory model selection by AICc, not a confirmatory,
-# pre-registered set of hypothesis tests. Treat p < 0.05 here as
-# hypothesis-generating, not as confirmed effects.
+# p-values below are not corrected for multiple comparisons across models or
+# terms; this is exploratory model selection by AICc.
 n_candidate_models <- length(build_formulas("y", z_vars))
 caveat <- sprintf(
   "# Exploratory model selection: %d candidate models (all additive + pairwise-interaction combinations of %s) fit per phenotype, ranked by AICc. p-values are NOT corrected for multiple comparisons across models or terms — treat as hypothesis-generating, not confirmatory.",
@@ -1177,74 +982,18 @@ cat(sprintf("\nReport written to %s (%d rows, plus a multiple-comparisons caveat
 # ======================  HISTORIC DATASET  ====================
 # ============================================================
 
-# historic_data.R
+# Historic section: same model-selection approach as the modern section, for
+# germination years 1959-2014 (limited by Kling fog's 1950-2014 coverage;
+# ~20 specimens). Predictors are Kling fog, BIO18 and CWD_historic, each a
+# 20-year rolling mean ending in the germination year (see
+# extract_pheno_env_data.R Section 15); BIO15 is excluded as in the modern
+# section. Responses: Count_disk_flourets, Count_ray_flourets, ray_prop.
 #
-# Companion to modern_data.R, following the undergrad's histenvvarsmodels.R
-# in spirit (long-window fog via Kling instead of MODIS/Werner). Uses
-# three _historic environmental variables — BIO18 (summer precip), Kling
-# fog (the real observed 1950-2014 fog series; the analog of "fog" here,
-# since MODIS FLCC only starts 2000), and CWD_historic (climatic water
-# deficit, added 2026-10-26) — each a rolling 20-year mean ending in (and
-# including) the specimen's own germination year, not a fixed reference
-# window (see extract_pheno_env_data.R Section 15). BIO15 (precip
-# seasonality) is excluded here for the same reason as the modern
-# section above (collinear with fog beyond this project's 0.7
-# threshold) — applied to the historic candidate set 2026-10-27 per
-# user instruction, not independently re-tested here. Kling's 1950-2014
-# coverage caps
-# this script's usable range at germination years 1959-2014 — a small
-# sample (~20 specimens) accepted per user decision 2026-09-06, rather
-# than blending in a different fog source for 2015+ specimens (which
-# would just be modern_data.R's fog_modern again, i.e. that script's
-# job). Answers a different question than modern_data.R: does long-term
-# fog/precip character predict these traits in older specimens, vs.
-# modern_data.R's recent-decade climate in specimens from 2009-2024.
-#
-# Against three floret-count/proportion response variables (no plant
-# size/shape traits — those aren't part of the undergrad's historic
-# analyses):
-#   Count_disk_flourets, Count_ray_flourets, ray_prop (ray / total florets)
-# ranks the candidate models by AICc, and writes:
-#   historic_data_output/model_selection_report.csv
-#     — one block per phenotype, the best 3 models by AICc weight, with a
-#       row per fixed-effect term (p-value, estimate +/- SE, z/t-score, N).
-#       Carries a header note caveating that p-values are not corrected
-#       for multiple comparisons — this is exploratory model selection.
-#   historic_data_output/response_plot_<phenotype>_rank<N>.png
-#     — for any of those top-3 models where the intercept AND every fixed
-#       effect is significant (p < 0.05): a continuous raster + a few
-#       labeled contour lines (color = model prediction), masked to the
-#       observed data's convex hull; a single-predictor model instead gets
-#       a 1D response curve; a 3+ predictor model facets across the
-#       low/median/high (10th/50th/90th percentile) of its next-strongest
-#       predictor (see modern_data.R for why — same logic, copied as-is).
-#   historic_data_output/ray_disk_over_time.png
-#     — disk count, ray count, and ray proportion vs. collection year
-#       (full historic-to-modern range), each with a linear trend line
-#       (raw/unadjusted — see year_trend_report.csv for the locality-
-#       adjusted version).
-#   historic_data_output/year_trend_report.csv
-#     — trait ~ year_z + (1 | Locality) for each phenotype: does year
-#       predict the trait once site is accounted for (Section 8)?
-#
-# Env variables are fit on z-scored (mean 0, SD 1) versions, additive plus
-# pairwise interactions only (MAX_INTERACTION_ORDER below) — modern_data.R
-# found higher-order interactions among these correlated env variables
-# produce spurious, collinearity-driven "best" models, so the same cap
-# applies here. Response-surface plots refit the winning formula on the
-# raw (unscaled) variables for interpretable axes.
-#
-# Poisson fits (floret counts) are checked for overdispersion and
-# automatically refit as negative binomial when overdispersed — see
-# modern_data.R for the full rationale, identical here.
-#
-# Count_ray_flourets is a fusion of dissection counts (pheno_file) and
-# iNat-photo counts (inatrays.csv), justified by the same paired Wilcoxon
-# test as the modern section above (moved to fire_turbine_analyses.R
-# 2026-10-06 — never year-restricted, so one run covers both sections).
-#
-# All localities are kept, including small ones — see modern_data.R's
-# locality-exclusion discussion; same reasoning applies here.
+# Outputs (historic_data_output/):
+#   model_selection_report.csv, response_plot_<phenotype>_rank<N>.png
+#   ray_disk_over_time.png: disk count, ray count and ray proportion vs.
+#     collection year with unadjusted linear trends
+#   year_trend_report.csv: trait ~ year_z + (1 | Locality) (Section 8)
 
 suppressMessages({
   library(dplyr)
@@ -1257,7 +1006,7 @@ suppressMessages({
   library(viridis)
   library(geometry)
   library(isoband)
-  library(patchwork)  # side-by-side panel composition (Section 3)
+  library(patchwork)  # panel composition
   library(Kendall)    # non-parametric corroboration of run_env_trend()'s LMER trends
 })
 
@@ -1265,10 +1014,10 @@ suppressMessages({
 # Paths
 # ============================================================
 
-env_file      <- "/private/groups/meyerlab/esteiger/pheno/emma_gee_results_final.csv"
-pheno_file    <- "/private/groups/meyerlab/esteiger/pheno/gtinatandvars.csv"
-inatrays_file <- "/private/groups/meyerlab/esteiger/pheno/inatrays.csv"
-out_dir       <- "/private/groups/meyerlab/esteiger/pheno/historic_data_output"
+env_file      <- file.path(BASE_DIR, "pheno/emma_gee_results_final.csv")
+pheno_file    <- file.path(BASE_DIR, "pheno/gtinatandvars.csv")
+inatrays_file <- file.path(BASE_DIR, "pheno/inatrays.csv")
+out_dir       <- file.path(BASE_DIR, "pheno/historic_data_output")
 dir.create(out_dir, showWarnings = FALSE)
 
 SIG_ALPHA <- 0.05
@@ -1282,8 +1031,7 @@ CONTOUR_LABEL_PT   <- CONTOUR_LABEL_SIZE * ggplot2::.pt
 
 # ============================================================
 # 1. Ray-floret count: fuse dissection and iNat-photo counts
-#    (identical logic/result to the modern section above — see there,
-#    and fire_turbine_analyses.R for the validating Wilcoxon test)
+#    (same as the modern section)
 # ============================================================
 
 pheno <- read.csv(pheno_file, stringsAsFactors = FALSE)
@@ -1300,15 +1048,8 @@ normalize_locality <- function(x) {
 # ============================================================
 # 2. Load + merge phenotype and _historic environmental data
 #
-#    No explicit year filter — env-data availability does the
-#    restricting instead: Kling_historic/BIO18_historic/BIO15_historic
-#    are only non-NA for germination years 1959-2014 (the rolling
-#    10-years-inclusive-of-germination-year window's coverage limits,
-#    bound by Kling's real 1950-2014 data — see extract_pheno_env_data.R
-#    Section 15), a small sample (~20 specimens) accepted per user
-#    decision 2026-09-06 rather than blending in a different fog source
-#    for 2015+ specimens. Join key/merge logic otherwise identical to
-#    modern_data.R.
+#    No year filter: the _historic variables are only non-NA for
+#    germination years 1959-2014. Merge logic as in the modern section.
 # ============================================================
 
 env <- read.csv(env_file, stringsAsFactors = FALSE)
@@ -1362,14 +1103,10 @@ historic$Locality <- droplevels(as.factor(historic$Locality))
 historic$ray_prop <- with(historic, Count_ray_flourets / (Count_disk_flourets + Count_ray_flourets))
 historic$Count_total_florets <- with(historic, Count_disk_flourets + Count_ray_flourets)
 
-# --- Does ray floret count differ systematically between dissection- and
-# iNat-photo-derived counts? The ray/disk-over-time figure (Section 3
-# below) pools both sources into one "Ray" series, and iNat records are
-# concentrated in recent years (citizen-science platform), so a counting-
-# method artifact here could masquerade as (or mask) a real temporal trend
-# in that figure. Tests Count_ray_flourets ~ Source, locality-adjusted,
-# same poisson-with-overdispersion-refit convention as run_year_trend()
-# below (fit_one() auto-refits to negative binomial if overdispersed).
+# --- Does ray count differ between dissection- and iNat-derived counts?
+# iNat records are concentrated in recent years, so a method difference could
+# look like a temporal trend in Section 3. Count_ray_flourets ~ Source,
+# locality-adjusted; fit_one() refits as negative binomial if overdispersed.
 cat("\n--- Ray floret count: dissection vs. iNat-photo counting method ---\n\n")
 source_check_data <- historic %>% drop_na(Count_ray_flourets, Source)
 source_check_data$Locality <- droplevels(as.factor(source_check_data$Locality))
@@ -1392,12 +1129,8 @@ if (is.null(m_source)) {
             file.path(out_dir, "ray_count_dissection_vs_inat_report.csv"), row.names = FALSE)
 }
 
-# z-scored predictors used for model selection. BIO15 (BIO15_historic)
-# excluded here for the same reason as the modern section above
-# (2026-09-06 finding: Fog x BIO15 collinearity makes any BIO15-
-# containing model unstable) -- not re-tested per-phenotype here, just
-# applying the modern section's established exclusion to the historic
-# candidate set as well, per user instruction 2026-10-27.
+# z-scored predictors used for model selection; BIO15 excluded as in the
+# modern section.
 env_vars <- c(Fog = "Kling_historic", BIO18 = "BIO18_historic", CWD = "CWD_historic")
 for (nm in names(env_vars)) {
   historic[[paste0(nm, "_z")]] <- as.numeric(scale(historic[[env_vars[[nm]]]]))
@@ -1408,25 +1141,11 @@ z_vars <- paste0(names(env_vars), "_z")   # c("Fog_z","BIO18_z","CWD_z")
 # 2b. Distributions of raw phenotype measurements (all specimens,
 #     modern + historic + iNat-only), faceted by locality
 #
-#     Sanity-check plot: disk/ray floret count and ray proportion are
-#     built directly from the raw `pheno`/`inat` tables (not `modern`/
-#     `historic`, which are each restricted by an inner_join against a
-#     rolling-window env-coverage window — irrelevant to whether a
-#     floret count itself is trustworthy, and previously found to
-#     silently drop 15 of 21 iNat-only specimens from this plot for
-#     that reason, 2026-10-07). This recovers every specimen with a
-#     disk or ray count, full 1927-2024 archive, no env-coverage gate.
-#     Plant height/width/ratio, by contrast, were only ever recorded on
-#     the 2024 modern collection (confirmed directly from the raw file
-#     — all 115 non-NA Height_in rows are year==2024, and `modern`'s own
-#     env-coverage window doesn't exclude any of them — not an
-#     env-coverage artifact), so those three panels still show
-#     `modern`'s specimens. Locality names relabeled to match this
-#     project's other plotting scripts (plot_env_time.R's
-#     cluster_labels); one row per locality (facet_wrap ncol=1), with
-#     the two row-blocks' heights scaled to the number of localities
-#     each actually has data for, so the shorter plant-size block isn't
-#     stretched to match the taller floret-count block.
+#     Floret counts come from the raw pheno/inat tables rather than
+#     `modern`/`historic`, which are restricted by env coverage. Plant
+#     height/width were only recorded on the 2024 collection, so those
+#     panels use `modern`. Locality labels match plot_env_time.R; the two
+#     row blocks are scaled to the number of localities each has.
 # ============================================================
 
 LOCALITY_LABELS <- c(VAFBLionHead = "Lion's Head", Strauss = "Tranquillon Mtn",
@@ -1447,11 +1166,8 @@ raw_floret <- pheno %>%
             Count_ray_flourets) %>%
   distinct()
 
-# Requires real coordinates (!is.na(latitude/longitude)) — matches modern's/
-# historic's own iNat-expansion filter; without it, ~15 iNat rows with a
-# ray count but no locality AND no coordinates at all (unplaceable, not
-# just missing a locality label) were getting pulled in as a spurious
-# "NA" locality facet (caught 2026-10-07 on first attempt at this fix).
+# Requires coordinates, as in the modern/historic iNat filter; otherwise iNat
+# rows with no locality or coordinates show up as an "NA" facet.
 raw_floret_inat <- inat %>%
   filter(!is.na(iNat_ray_count), !is.na(latitude), !is.na(longitude),
          !(SampleID %in% raw_floret$SampleID)) %>%
@@ -1461,9 +1177,8 @@ raw_floret_inat <- inat %>%
 
 floret_combined <- bind_rows(raw_floret, raw_floret_inat)
 
-# Backfill a still-missing Locality from inatrays.csv when available (same
-# step modern/historic each do) — e.g. specimen 233000618, blank Locality
-# in pheno_file, backfilled to "Coastal_Lompoc" from its iNat record.
+# Backfill a missing Locality from inatrays.csv (e.g. specimen 233000618,
+# backfilled to "Coastal_Lompoc").
 na_loc <- is.na(floret_combined$Locality)
 if (any(na_loc)) {
   inat_loc_by_id <- setNames(normalize_locality(inat$Locality), inat$SampleID)
@@ -1518,11 +1233,7 @@ cat(sprintf("Phenotype distribution plot (faceted by locality) written to %s\n",
 # ============================================================
 # 3. Ray:disk floret change over time
 #
-#    Uses the full phenotype file regardless of _historic env-data
-#    availability (unlike everything else below, which is restricted to
-#    germination years 1959-2014) — this is a simple temporal-trend
-#    check of collection year itself, requested alongside the env-driven
-#    analysis below.
+#    Uses the full phenotype file regardless of _historic env coverage.
 # ============================================================
 
 time_data <- historic %>%
@@ -1532,24 +1243,15 @@ time_data <- historic %>%
   drop_na(value) %>%
   mutate(metric = factor(metric, levels = c("Disk", "Ray")))
 
-# Sized up from the standard CONTOUR_LABEL_PT — this plot is meant to read
-# at a smaller display scale (e.g. inset/thumbnail), so its embedded font
-# needs to be oversized relative to the figure's own (narrower) dimensions.
+# Larger than CONTOUR_LABEL_PT; this plot is shown at a smaller scale.
 RD_TIME_FONT_PT <- CONTOUR_LABEL_PT * 1.3
 
-# --- BIO18-over-time panel (left half of the combined figure below),
-#     replicating plot_env_time.R's "coord_overall_loess" version — a
-#     single trimmed LOESS fit pooling every individual coordinate's
-#     annual BIO18 value (env_wi_range.csv, full 1927-2024 PRISM record),
-#     not broken out by locality — themed (no title/gridlines, enlarged
-#     fonts, tightened legend spacing) and colored (black line, grey
-#     ribbon) to match the disk/ray panel's own single-line look. Trim
-#     left at the original script's span/2-tied fraction (BIO18's
-#     span=0.5, chosen there for extra smoothing against BIO18's
-#     zero-inflated spikes) rather than extended toward the present —
-#     pushing the trim out to reach 2024 made the line visibly wigglier
-#     without a corresponding gain in what it's meant to show here.
-env_range <- read.csv("/private/groups/meyerlab/esteiger/pheno/env_wi_range.csv", stringsAsFactors = FALSE)
+# --- BIO18-over-time panel: a single trimmed LOESS pooling every
+#     coordinate's annual BIO18 (env_wi_range.csv, 1927-2024), as in
+#     plot_env_time.R's "coord_overall_loess"; span=0.5 smooths BIO18's
+#     zero-inflated spikes. The trim is kept at span/2 rather than extended
+#     toward 2024, which made the line visibly wigglier.
+env_range <- read.csv(file.path(BASE_DIR, "pheno/env_wi_range.csv"), stringsAsFactors = FALSE)
 
 bio18_long <- env_range %>%
   select(Locality, Lat, Long, matches("^BIO18_[0-9]{4}$")) %>%
@@ -1557,9 +1259,8 @@ bio18_long <- env_range %>%
   mutate(year = as.integer(sub("BIO18_", "", year))) %>%
   drop_na(value)
 
-# Trimmed LOESS: at each end, a fit draws on data from only one side of the
-# window, so the outer span/2 fraction of the year range is dropped before
-# plotting (identical logic to plot_env_time.R's trim_loess()).
+# Trimmed LOESS: the outer span/2 fraction of the year range at each end is
+# dropped, since fits there draw on one side only (as in plot_env_time.R).
 trim_loess_bio18 <- function(year, value, span = 0.5) {
   df <- data.frame(year = year, value = value)
   if (nrow(df) < 5) return(data.frame())
@@ -1578,30 +1279,19 @@ trim_loess_bio18 <- function(year, value, span = 0.5) {
 
 bio18_loess <- trim_loess_bio18(bio18_long$year, bio18_long$value)
 
-# Kling fog frequency, same pooled-LOESS treatment, added to panel c on
-# a secondary (right-hand) axis — its scale (~0.05-0.6) is entirely
-# different from BIO18's (~1-4.5), so its fitted values are linearly
-# rescaled onto BIO18's axis for plotting, with sec_axis() applying the
-# inverse transform back to Kling's own units for the right-hand labels.
-#
-# Restored 2026-10-07 (per user request) after being swapped out for
-# BIO15 on 2026-09-24 — back to Kling on the right axis, BIO18 (summer
-# precip) on the left, as in the original bio18_kling_over_time.png.
+# Kling fog frequency on a secondary axis: its fitted values are linearly
+# rescaled onto BIO18's axis, and sec_axis() applies the inverse transform.
 kling_long <- env_range %>%
   select(Locality, Lat, Long, matches("^kling_fog_[0-9]{4}$")) %>%
   pivot_longer(matches("^kling_fog_[0-9]{4}$"), names_to = "year", values_to = "value") %>%
   mutate(year = as.integer(sub("kling_fog_", "", year))) %>%
   drop_na(value) %>%
-  # Kling's raw value is a 0-1 fraction; rescaled to a true percentage here
-  # (display only — the underlying GLMM/trend-test variable, Kling_historic/
-  # kling_fog, is untouched) so the axis and its "% fog" label agree, matching
-  # fog_modern (Werner FLCC), which is already 0-100.
+  # Kling is a 0-1 fraction; shown as a percentage for display only, to match
+  # fog_modern (Werner FLCC, 0-100).
   mutate(value = value * 100)
-# span=0.2 matches plot_env_time.R's own var_spans[["kling_fog"]] choice
-# there (less smoothing than BIO18's 0.5 — Kling is a smoother, more
-# autocorrelated physical process than storm-driven precipitation, so it
-# tolerates less smoothing without getting noisy; BIO18 needs the extra
-# smoothing specifically because it's zero-inflated with sparse spikes).
+# span=0.2 as in plot_env_time.R for kling_fog: Kling is a smoother, more
+# autocorrelated process than storm-driven precipitation and tolerates less
+# smoothing; BIO18 needs more because it is zero-inflated with sparse spikes.
 kling_loess <- trim_loess_bio18(kling_long$year, kling_long$value, span = 0.2)
 
 FOG_LINE_COLOR <- "grey70"
@@ -1640,14 +1330,10 @@ cat(sprintf("Panel c (BIO18/Kling fog over time), standalone, written to %s\n",
             file.path(out_dir, "bio18_kling_over_time.png")))
 
 p_time <- ggplot(time_data, aes(x = year, y = value, shape = metric, color = metric)) +
-  # small jitter only, so many specimens sharing an exact (year, count) pair
-  # (common in recent, densely-sampled years) don't fully overlap into one
-  # dot — geom_smooth() below is unaffected, since jitter is applied only
-  # to this layer's drawn positions, not to the underlying data it fits on.
+  # small jitter on drawn positions only; geom_smooth() fits the raw data
   geom_point(position = position_jitter(width = 0.3, height = 0.3, seed = 42),
              alpha = 0.85, size = 2.3) +
-  # color is a fixed override here (not mapped) so both trend lines render
-  # in the same neutral black/grey — only the points are colored per metric
+  # fixed (unmapped) colour so both trend lines are black/grey
   geom_smooth(method = "lm", color = "black", fill = "grey70", linewidth = 0.6, se = TRUE) +
   scale_shape_manual(values = c("Disk" = 16, "Ray" = 17)) +
   scale_color_manual(values = c("Disk" = "grey65", "Ray" = "black")) +
@@ -1669,9 +1355,8 @@ p_time <- ggplot(time_data, aes(x = year, y = value, shape = metric, color = met
 ggsave(file.path(out_dir, "ray_disk_over_time.png"), p_time, width = 6.5, height = 7, dpi = 150)
 cat(sprintf("\nRay/disk-over-time plot written to %s\n", file.path(out_dir, "ray_disk_over_time.png")))
 
-# Captured for the combined a/b/c/d figure at the very end of this script
-# (panel_c = BIO18 LOESS, panel_d = ray/disk-over-time) — carries forward
-# PHENOTYPE_DATA_PANELS$a/$b already set in the modern section above.
+# Captured for the combined figure (panel_c = BIO18 LOESS, panel_d =
+# ray/disk over time).
 if (!exists("PHENOTYPE_DATA_PANELS")) PHENOTYPE_DATA_PANELS <- list()
 PHENOTYPE_DATA_PANELS$c <- p_bio18
 PHENOTYPE_DATA_PANELS$d <- p_time
@@ -1683,16 +1368,14 @@ cat(sprintf("Combined BIO18 + ray/disk-over-time figure written to %s\n",
 
 # ============================================================
 # 4. Generic helpers: build formula set, fit, AICc-rank, extract coefs
-#    (identical to modern_data.R — see there for the full rationale)
+#    (as in the modern section)
 # ============================================================
 
 MAX_INTERACTION_ORDER <- 2
 
 build_formulas <- function(response, vars) {
-  # Null model included explicitly (2026-09-06, per user request) so the
-  # AICc ranking directly shows whether ANY env-variable combination
-  # actually outperforms "no predictors at all" — relevant here since
-  # historic_data.R's sample is small enough that this isn't a given.
+  # Null model included so the ranking shows whether any env combination
+  # beats no predictors, given the small sample.
   null_model <- paste(response, "~ 1 + (1 | Locality)")
   additive <- unlist(lapply(seq_along(vars), function(i) {
     combn(vars, i, function(v) paste(response, "~", paste(v, collapse = " + "), "+ (1 | Locality)"))
@@ -1783,7 +1466,7 @@ display_name <- function(term) {
 
 # ============================================================
 # 5. Response-surface / response-curve plotting
-#    (identical to modern_data.R — see there for the full rationale)
+#    (as in the modern section)
 # ============================================================
 
 mask_to_hull <- function(grid_xy, obs_xy) {
@@ -1917,14 +1600,9 @@ plot_response_surface <- function(response, formula_str, data, family, phenotype
 
   p <- ggplot() +
     geom_raster(data = grid, aes(x = .data[[axis_vars[1]]], y = .data[[axis_vars[2]]], fill = pred_masked)) +
-    # Fog/BIO18/BIO15 are rolling-window means computed per germination
-    # year, so many specimens sharing a GermYear (and similar coordinates)
-    # land on the exact same point — a small jitter (~1.5% of each axis's
-    # own range) breaks these apart so the true sample size is visible,
-    # without meaningfully displacing where points fall relative to the
-    # contour surface underneath them. Drawn before the contour lines/
-    # labels below so those render on top and stay legible rather than
-    # getting covered by a point.
+    # Many specimens share a germination year and near-identical
+    # coordinates, so points are jittered (~1.5% of each axis range) to show
+    # the true sample size. Drawn before the contour labels so those stay on top.
     geom_point(data = data, aes(x = .data[[axis_vars[1]]], y = .data[[axis_vars[2]]]),
                shape = 21, fill = "white", color = "black", stroke = 0.4, size = 1.8,
                position = position_jitter(width = diff(rng1) * 0.015, height = diff(rng2) * 0.015, seed = 42))
@@ -1952,12 +1630,8 @@ plot_response_surface <- function(response, formula_str, data, family, phenotype
 }
 
 # ============================================================
-# 6-7. Per-phenotype env-variable GLM (cross-sectional: does trait LEVEL
-#      relate to env LEVEL across specimens) + its report — RE-ENABLED
-#      2026-09-06 per user decision, while Section 10's mediation test is
-#      temporarily disabled (see below) during work on modern_data.R's
-#      parallel Werner-fog mediation section. Re-disable by wrapping in
-#      if (FALSE) { ... } again if the mediation focus resumes.
+# 6-7. Per-phenotype env-variable GLM (cross-sectional: does trait level
+#      relate to env level across specimens) + its report
 # ============================================================
 
 if (TRUE) {
@@ -1966,15 +1640,9 @@ report_rows <- list()
 
 run_phenotype <- function(response, phenotype_label, family, data) {
   cat(sprintf("\n=== %s (%s) ===\n", phenotype_label, response))
-  # NOT applying modern_data.R's uniform-N-across-candidates fix here.
-  # z_vars includes Fog (Kling_historic), whose real coverage is ~12-16
-  # specimens (vs. ~159-162 for BIO18/BIO15) — forcing every candidate
-  # model in the set to share one N would crush BIO18/BIO15-only models
-  # down to Kling's tiny sample too, for no benefit (tested 2026-09-07:
-  # collapsed ray_prop's whole candidate set to n=12). Per user decision,
-  # historic keeps its original mixed-N behavior — each formula's N is
-  # whatever glmer/glmmTMB's own per-formula NA handling gives it — and
-  # accepts the resulting cross-model AICc caveat as the lesser cost.
+  # Unlike the modern section, rows are not restricted to complete cases
+  # across all candidate variables: Kling covers only ~12-16 specimens vs.
+  # ~160 for BIO18, so each formula keeps its own N (caveat for cross-model AICc).
   data$Locality <- droplevels(data$Locality)
   fit <- fit_all(response, data, family)
   if (length(fit$models) == 0) {
@@ -2056,26 +1724,19 @@ suppressWarnings(write.table(report, report_path, sep = ",", row.names = FALSE, 
 cat(sprintf("\nReport written to %s (%d rows, plus a multiple-comparisons caveat header)\n",
             report_path, nrow(report)))
 
-} # end if (TRUE) — Sections 6-7 re-enabled
+} # end if (TRUE): Sections 6-7
 
 # ============================================================
-# 8. Formal test: does each trait change with collection year, after
-#    accounting for locality?
-#
-#    The ray_disk_over_time.png plot (Section 3) is a raw/unadjusted
-#    trend — it doesn't distinguish "traits genuinely change over time"
-#    from "different eras happened to sample different sites". This
-#    fits trait ~ year_z + (1 | Locality) for each phenotype (same
-#    family/dispersion-check/fusion logic as the env-variable models
-#    above) to test the year effect with site pooled out.
+# 8. Does each trait change with collection year, after accounting for
+#    locality? trait ~ year_z + (1 | Locality), same family/dispersion
+#    handling as above.
 # ============================================================
 
 cat("\n=== Year-trend models (trait ~ year, locality as random intercept) ===\n\n")
 
 year_trend_rows <- list()
-# Fitted model + the year mean/sd used to build year_z, captured per
-# response so panel d (below) can plot this GLMM's own population-level
-# prediction instead of a naive unadjusted lm() smooth.
+# Fitted model and year mean/sd per response, so panel d can plot this GLMM's
+# population-level prediction.
 year_trend_models <- list()
 run_year_trend <- function(response, phenotype_label, family, data) {
   data <- data %>% drop_na(year)
@@ -2107,15 +1768,10 @@ year_trend_path <- file.path(out_dir, "year_trend_report.csv")
 write.csv(year_trend_report, year_trend_path, row.names = FALSE)
 cat(sprintf("\nYear-trend report written to %s\n", year_trend_path))
 
-# --- Rebuild panel d (combined-figure version only — the standalone
-#     ray_disk_over_time.png above keeps its original naive lm smooth)
-#     using each phenotype's own year-trend GLMM (fit just above) for
-#     the trend line/CI, rather than an unadjusted lm() that ignores
-#     the (1|Locality) structure the actual reported p-values come
-#     from. Population-level (re.form=NA) prediction on the link scale,
-#     back-transformed; SE from the fixed-effects vcov only (ignoring
-#     between-locality variance, standard for this kind of "average
-#     locality" band) since glmer's predict() has no built-in se.fit.
+# --- Rebuild panel d (combined figure only) from each phenotype's year-trend
+#     GLMM: population-level (re.form=NA) prediction on the link scale,
+#     back-transformed; SE from the fixed-effects vcov only, since glmer's
+#     predict() has no se.fit.
 predict_year_trend_glmm <- function(fit) {
   m <- fit$model
   year_seq <- seq(fit$year_range[1], fit$year_range[2], length.out = 100)
@@ -2175,31 +1831,15 @@ if (all(c("Count_disk_flourets", "Count_ray_flourets") %in% names(year_trend_mod
 # ============================================================
 # 9. Do the env variables themselves trend over time?
 #
-#    A different question from the GLM above (which asks whether trait
-#    LEVEL relates to env LEVEL across specimens) and from Section 8
-#    (whether the trait trends with collection year) — this asks whether
-#    fog/BIO18/BIO15 themselves have a secular trend, using every year of
-#    data at every sampled coordinate (env_wi_range.csv: per-coordinate
-#    annual values, BIO12/15/18 1927-2024, fog 2000-2025, kling_fog
-#    1950-2014) rather than each specimen's own rolling 10yr-inclusive
-#    window — far more power for THIS question, since it isn't
-#    bottlenecked by which specimens happen to have a computable window.
-#    Locality-capped (15/coordinate, matching the project's standard
-#    collinearity-check methodology) since Strauss has 27 unique
-#    coordinates here vs. Dangermond's 2.
-#
-#    If an env variable shows no year trend, it can't be mediating the
-#    year effects found in Section 8. If it does, that's necessary but
-#    not sufficient for a mediating role — genuine mediation would need
-#    trait ~ year + env to show a smaller/less-significant year term
-#    than trait ~ year alone (Section 8); not attempted here given how
-#    few specimens have both a trait value and a fully-covered env
-#    window to test that on.
+#    Uses every year at every sampled coordinate (env_wi_range.csv:
+#    BIO12/15/18 1927-2024, fog 2000-2025, kling_fog 1950-2014) rather
+#    than each specimen's window. Capped at 15 per coordinate, since
+#    Strauss has 27 unique coordinates vs. Dangermond's 2.
 # ============================================================
 
 cat("\n=== Env-variable-over-time trend (env_wi_range.csv, locality-capped) ===\n\n")
 
-range_env <- read.csv("/private/groups/meyerlab/esteiger/pheno/env_wi_range.csv",
+range_env <- read.csv(file.path(BASE_DIR, "pheno/env_wi_range.csv"),
                        stringsAsFactors = FALSE, check.names = FALSE)
 
 set.seed(42)
@@ -2243,15 +1883,9 @@ env_trend_path <- file.path(out_dir, "env_trend_report.csv")
 write.csv(env_trend_report, env_trend_path, row.names = FALSE)
 cat(sprintf("\nEnv-trend report written to %s\n", env_trend_path))
 
-# --- Non-parametric corroboration: Mann-Kendall test on each variable's
-# locality-capped annual mean series (same range_capped set run_env_trend()
-# uses above, same 15/coordinate cap, same seed -- so this test and the
-# LMER trend above are drawn from identical input data, just a different
-# statistic). Each variable's own full available year range is used (no
-# year-range restriction is applied here, or anywhere above -- e.g. Kling
-# fog's annual layers only exist for 1950-2014 in the first place, so that
-# is simply its full record, not a chosen subset; BIO18/BIO15 use their
-# full 1927-2024 PRISM archive).
+# --- Mann-Kendall test on each variable's locality-capped annual mean series
+# (same range_capped data and seed as run_env_trend()), over each variable's
+# full available year range.
 mk_rows <- list()
 run_mann_kendall <- function(var_prefix, var_label) {
   long <- pivot_env_long(range_capped, var_prefix) %>% drop_na(value)
@@ -2278,31 +1912,10 @@ write.csv(mann_kendall_report, mann_kendall_path, row.names = FALSE)
 cat(sprintf("\nMann-Kendall report written to %s\n", mann_kendall_path))
 
 # ============================================================
-# 10. Mediation test: do Fog and BIO18's trends over time explain the
-#     year-trend in ray floret proportion? — TEMPORARILY DISABLED
-#     2026-09-06 while building the parallel Werner-fog mediation section
-#     in modern_data.R; Sections 6-7 (the cross-sectional GLM) are
-#     re-enabled above in the meantime. Re-enable by wrapping this
-#     section back in if (TRUE) { ... } once that work is done.
-#
-#     modern_data.R found Fog and BIO18 (summer precip) both positively
-#     predict ray_prop (n=138, Fog beta=+0.052 p=0.036, BIO18 beta=+0.064
-#     p=0.041). Section 9 above found Fog is DECLINING over time
-#     (p=9e-25) while BIO18 is INCREASING (p=1.8e-5) — so naively, a
-#     declining Fog would predict a declining ray_prop, yet Section 8
-#     found ray_prop trending upward (marginally, p=0.056). BIO18's rise
-#     is the candidate explanation: if its (positive) effect on ray_prop
-#     outweighs Fog's declining contribution, the net trend could still
-#     be upward. Tested here by comparing the year coefficient in
-#     ray_prop ~ year alone vs. ray_prop ~ year + Fog + BIO18 (does it
-#     attenuate once the env variables are controlled for?), plus a
-#     BIO18-only version (more power — BIO18_historic's PRISM-based
-#     coverage is broader than Fog_historic's Kling-based one, so more
-#     specimens qualify when Fog isn't required).
-#
-#     All using _historic (20yr rolling, inclusive of germination year)
-#     variables, restricted to whichever specimens have them — a small,
-#     likely underpowered sample; treat as suggestive, not confirmatory.
+# 10. Mediation test: do Fog and BIO18 trends over time explain the year
+#     trend in ray floret proportion? Compares the year coefficient in
+#     ray_prop ~ year vs. ray_prop ~ year + Fog + BIO18, plus a BIO18-only
+#     version (more specimens). Small sample; suggestive only. Disabled.
 # ============================================================
 
 if (FALSE) {
@@ -2333,8 +1946,7 @@ run_mediation <- function(response, label, family) {
     cat("  Full model (year + Fog + BIO18) failed to converge on this small sample.\n")
   }
 
-  # BIO18-only version — more specimens (doesn't need Fog/Kling), directly
-  # tests the "BIO18's rise alone" hypothesis
+  # BIO18-only version (more specimens, no Kling requirement)
   med_bio18_data <- historic %>% drop_na(!!sym(response), year, BIO18_z)
   med_bio18_data$Locality <- droplevels(med_bio18_data$Locality)
   med_bio18_data$year_z <- as.numeric(scale(med_bio18_data$year))
@@ -2367,23 +1979,19 @@ run_mediation("Count_ray_flourets", "Count ray florets", "poisson")
 run_mediation("Count_disk_flourets", "Count disk florets", "poisson")
 run_mediation("Count_total_florets", "Count total florets", "poisson")
 
-} # end if (FALSE) — Section 10 (mediation) temporarily disabled
+} # end if (FALSE): Section 10
 
 # ============================================================
-# 11. Combined a/b/c/d figure — single row:
-#       a: Height:width ratio response curve (modern, rank3 top significant model)
-#       b: Proportion ray florets response surface (modern, rank1 top significant model)
-#       c: BIO18-over-time, pooled LOESS (historic, env_wi_range.csv)
+# 11. Combined a/b/c/d figure, single row:
+#       a: Height:width ratio response curve (modern)
+#       b: Proportion ray florets response surface (modern)
+#       c: BIO18-over-time, pooled LOESS (historic)
 #       d: Ray/disk floret counts over time (historic)
-#     Panels a/b default to CONTOUR_LABEL_PT sizing (tuned for their own
-#     standalone response_plot_*.png files); overridden here to match c/d's
-#     larger RD_TIME_FONT_PT so all four panels share one font size in
-#     this combined figure specifically — their individually-saved files
-#     are untouched, since this re-themes captured copies, not the
-#     originals.
+#     Panels a/b are re-themed to RD_TIME_FONT_PT to match c/d; their
+#     standalone files are unchanged.
 # ============================================================
 
-combined_out_dir <- "/private/groups/meyerlab/esteiger/pheno/phenotype_data_output"
+combined_out_dir <- file.path(BASE_DIR, "pheno/phenotype_data_output")
 dir.create(combined_out_dir, showWarnings = FALSE)
 
 if (all(c("a", "b", "c", "d") %in% names(PHENOTYPE_DATA_PANELS))) {
@@ -2396,15 +2004,10 @@ if (all(c("a", "b", "c", "d") %in% names(PHENOTYPE_DATA_PANELS))) {
   panel_c <- match_font(PHENOTYPE_DATA_PANELS$c)
   panel_d <- match_font(PHENOTYPE_DATA_PANELS$d)
 
-  # --- Phenotype-extreme silhouettes (transparent PNGs supplied by user,
-  #     2026-09-11) placed in the corners of panels a/b. annotation_custom()
-  #     positions in DATA units, so each image's on-plot footprint is sized
-  #     from the panel's own data range (height = a fraction of the y-range)
-  #     with width back-solved from the image's true pixel aspect ratio and
-  #     an estimated panel physical aspect ratio (panel render ~4.2in wide x
-  #     6.0in tall, from the 18x7in/4-panel layout minus axis margins) —
-  #     approximate, since patchwork doesn't expose exact per-panel
-  #     dimensions; visually verified after rendering, not derived exactly.
+  # --- Phenotype-extreme silhouettes (transparent PNGs) in the corners of
+  #     panels a/b. annotation_custom() positions in data units, so image
+  #     size is set from the panel's data range, the image aspect ratio and
+  #     an approximate panel size; check visually after rendering.
   suppressMessages(library(png))
   PANEL_W_IN <- 4.2; PANEL_H_IN <- 6.0  # rough per-panel physical size estimate
   # corner = "bottomleft"/"topright" anchors to that plot corner; corner =
@@ -2435,18 +2038,17 @@ if (all(c("a", "b", "c", "d") %in% names(PHENOTYPE_DATA_PANELS))) {
   panel_a_xrange <- range(hw_panel_a_data$fog_modern, na.rm = TRUE)
   panel_a_yrange <- range(hw_panel_a_data$BIO18_modern, na.rm = TRUE)
   panel_a <- panel_a %>%
-    add_silhouette("/private/groups/meyerlab/esteiger/pheno/tall.png", "bottomleft", panel_a_xrange, panel_a_yrange, height_frac = 0.46) %>%
-    add_silhouette("/private/groups/meyerlab/esteiger/pheno/wide.png", "topright", panel_a_xrange, panel_a_yrange, height_frac = 0.46)
+    add_silhouette(file.path(BASE_DIR, "pheno/tall.png"), "bottomleft", panel_a_xrange, panel_a_yrange, height_frac = 0.46) %>%
+    add_silhouette(file.path(BASE_DIR, "pheno/wide.png"), "topright", panel_a_xrange, panel_a_yrange, height_frac = 0.46)
 
-  # NOTE: global z_vars has since been overwritten by the historic section
-  # below (it ends as c("Fog_z","BIO18_z","BIO15_z")) — modern's own set is
-  # hardcoded here rather than reused, to match panel_b's actual model.
+  # Global z_vars was overwritten by the historic section, so modern's set is
+  # hardcoded here to match panel_b's model.
   ray_prop_panel_data <- modern %>% drop_na(ray_prop, Fog_z, BIO18_z)
   panel_b_xrange <- range(ray_prop_panel_data$fog_modern, na.rm = TRUE)
   panel_b_yrange <- range(ray_prop_panel_data$BIO18_modern, na.rm = TRUE)
   panel_b <- panel_b %>%
-    add_silhouette("/private/groups/meyerlab/esteiger/pheno/lower_ratio.png", "bottomleft", panel_b_xrange, panel_b_yrange, height_frac = 0.17) %>%
-    add_silhouette("/private/groups/meyerlab/esteiger/pheno/higher_ratio.png", "topleft_at", panel_b_xrange, panel_b_yrange, height_frac = 0.17,
+    add_silhouette(file.path(BASE_DIR, "pheno/lower_ratio.png"), "bottomleft", panel_b_xrange, panel_b_yrange, height_frac = 0.17) %>%
+    add_silhouette(file.path(BASE_DIR, "pheno/higher_ratio.png"), "topleft_at", panel_b_xrange, panel_b_yrange, height_frac = 0.17,
                     anchor = c(13, panel_b_yrange[2] - 0.1 * diff(panel_b_yrange)))
 
   combined_4panel <- (panel_a | panel_b | panel_c | panel_d) +
@@ -2464,11 +2066,11 @@ if (all(c("a", "b", "c", "d") %in% names(PHENOTYPE_DATA_PANELS))) {
 }
 
 # ============================================================
-# 11b. Reordered main figure (2026-10-07 per user decision):
-#        A: Height:width response surface (modern) — was B
-#        B: ray_prop response surface (modern) — was C
-#        C: BIO18/Kling-fog-over-time, pooled LOESS (historic) — was D
-#        D: disk/ray floret counts over time (historic) — was A
+# 11b. Reordered main figure:
+#        A: Height:width response surface (modern)
+#        B: ray_prop response surface (modern)
+#        C: BIO18/Kling-fog-over-time, pooled LOESS (historic)
+#        D: disk/ray floret counts over time (historic)
 # ============================================================
 
 if (exists("panel_a") && exists("panel_b") && exists("panel_c") && exists("panel_d")) {
@@ -2497,27 +2099,23 @@ if (exists("panel_a") && exists("panel_b") && exists("panel_c") && exists("panel
 #              H disk/ray floret counts over time
 #     B/C come from PHENOTYPE_FIG_PANELS (drawn in the modern section);
 #     H re-themes the year-trend GLMM panel (PHENOTYPE_DATA_PANELS$d).
-#     Map panels: viridis, reversed so declines are yellow and increases
-#     purple; data over a light grey California polygon, a black box
-#     marking the study region, inset of that region (top right) with
-#     collection localities (black points), colour bar below the inset.
-#       Fog trend: per-pixel least-squares slope of the annual Kling fog
+#     Map panels: reversed viridis (declines yellow, increases purple) over
+#     a grey California polygon, study region boxed, with an inset of the
+#     region showing collection localities and a colour bar below it.
+#       Fog trend: per-pixel least-squares slope of annual Kling fog
 #         fraction, 1950-2014, x100 (% of hours per year).
-#       Summer rain: per-pixel linear-probability slope of the occurrence
-#         of measurable (> 1 mm) June-August rain, 1927-2025, x100 (%
-#         per decade), from env/ca_summer_precip_trend_map.R (cached tif);
-#         shown unmasked by significance.
+#       Summer rain: per-pixel linear-probability slope of measurable
+#         (> 1 mm) June-August rain, 1927-2025, x100 (% per decade),
+#         not masked by significance.
 # ============================================================
 
 suppressMessages({ library(terra); library(sf); library(jpeg) })
 
 FIG_H_IN <- 5.8          # figure width follows from the bottom row (see layout below)
-ENV_DIR  <- "/private/groups/meyerlab/esteiger/env"
-# California outline. study_area/california_boundary.gpkg (from the `maps`
-# package) is too coarse at the coast -- over half the collection localities
-# fall outside it -- so the outline used here is the PRISM 800-m land mask
-# (true coastline) within that polygon buffered by 3 km (its straight inland
-# borders are fine). Cached.
+ENV_DIR  <- file.path(BASE_DIR, "env")
+# California outline: study_area/california_boundary.gpkg is too coarse at the
+# coast (over half the localities fall outside it), so the PRISM 800-m land
+# mask within that polygon buffered by 3 km is used. Cached.
 CA_LAND_GPKG <- file.path(ENV_DIR, "study_area/california_land_prism.gpkg")
 if (!file.exists(CA_LAND_GPKG)) {
   ca_coarse <- st_read(file.path(ENV_DIR, "study_area/california_boundary.gpkg"), quiet = TRUE)
@@ -2540,10 +2138,9 @@ if (!file.exists(KLING_TREND_TIF)) {
   kling_trend <- kling_trend * 100                        # fraction -> % of hours, per year
   writeRaster(kling_trend, KLING_TREND_TIF, overwrite = TRUE)
 }
-# Summer-rain occurrence trend, recomputed here without masking to the coarse
-# polygon (env/ca_summer_precip_trend_map.R's cached tif is masked to it):
-# per pixel, OLS slope of P(June-August rain > 1 mm) on year, over every
-# 1927-2025 year with all three months present, x10 (per decade) x100 (%).
+# Summer-rain occurrence trend, unmasked: per pixel, OLS slope of
+# P(June-August rain > 1 mm) on year over every 1927-2025 year with all three
+# months present, x10 (per decade) x100 (%).
 RAIN_TREND_TIF <- file.path(ENV_DIR, "figures/ca_summer_rain_occurrence_trend_pct_per_decade_unmasked.tif")
 if (!file.exists(RAIN_TREND_TIF)) {
   prism_f <- function(y, m) file.path(ENV_DIR, "PRISM", sprintf("%d%02d", y, m), sprintf("prism_ppt_us_30s_%d%02d.tif", y, m))
@@ -2565,7 +2162,7 @@ rain_trend <- mask(rast(RAIN_TREND_TIF), vect(st_transform(CA_SF, 4269)))
 rain_trend <- mask(rain_trend, resample(fog_trend, rain_trend, method = "near"))
 
 # --- collection localities and the study-region box ---
-fig_pts <- read.csv("/private/groups/meyerlab/esteiger/pheno/env_wi_range.csv")[, c("Lat", "Long")] %>%
+fig_pts <- read.csv(file.path(BASE_DIR, "pheno/env_wi_range.csv"))[, c("Lat", "Long")] %>%
   distinct() %>% filter(!is.na(Lat), !is.na(Long))
 # the project's study box (bbox_extent = ext(-120.7, -120.1, 34.4, 34.9))
 STUDY_BOX <- c(xmin = -120.7, xmax = -120.1, ymin = 34.4, ymax = 34.9)
@@ -2632,7 +2229,7 @@ panel_D <- map_panel(fog_trend,  "Fog trend\n(% hrs/yr)", "D", "E")
 panel_F <- map_panel(rain_trend, "Summer rain trend\n(% pts/decade)", "F", "G")
 
 # --- A: photographs ---
-arch <- jpeg::readJPEG("/private/groups/meyerlab/esteiger/pheno/modern_data_output/plant_architecture.jpg")
+arch <- jpeg::readJPEG(file.path(BASE_DIR, "pheno/modern_data_output/plant_architecture.jpg"))
 arch <- arch[seq(1, dim(arch)[1], 4), seq(1, dim(arch)[2], 4), ]
 panel_A <- ggplot() +
   annotation_raster(arch, xmin = 0, xmax = dim(arch)[2], ymin = 0, ymax = dim(arch)[1]) +
@@ -2652,7 +2249,7 @@ fig_silhouette <- function(p, img_path, corner, xr, yr, height_frac, anchor = NU
   p + annotation_custom(grid::rasterGrob(img, interpolate = TRUE),
                         xmin = x0, xmax = x0 + w_data, ymin = y0, ymax = y0 + h_data)
 }
-SIL <- "/private/groups/meyerlab/esteiger/pheno"
+SIL <- file.path(BASE_DIR, "pheno")
 xrB <- range(hw_panel_a_data$fog_modern, na.rm = TRUE); yrB <- range(hw_panel_a_data$BIO18_modern, na.rm = TRUE)
 panel_B <- PHENOTYPE_FIG_PANELS$B %>%
   fig_silhouette(file.path(SIL, "tall.png"), "bottomleft", xrB, yrB, 0.55) %>%
@@ -2677,11 +2274,10 @@ panel_H <- panel_H + labs(tag = "H") + FIG_THEME +
 # insets' own tag placement)
 TAG_THEME <- theme(plot.tag = element_text(size = FIG_PT + 2, hjust = 0, vjust = 1), plot.tag.position = c(0, 1))
 # Layout in absolute units so every panel fills its cell:
-#   bottom row: D and F exactly as wide as their (fixed-aspect) maps,
-#     side by side with no gap; H takes the rest, wrapped as a whole plot so its
-#     whole plot, axis title included, spans the maps' height.
-#   top row: A exactly as wide as the photograph at the row's height;
-#     B and C share the remaining width.
+#   bottom row: D and F exactly as wide as their fixed-aspect maps; H takes
+#     the rest, wrapped so its axis title spans the maps' height.
+#   top row: A as wide as the photograph at the row's height; B and C share
+#     the remaining width.
 H_W_IN    <- 2.25                                     # width of H
 FIG_W_IN  <- 2 * MAP_W_IN + H_W_IN                    # bottom row sets the figure width; top row
                                                       # (A at the photo's width, B/C share the rest) matches it

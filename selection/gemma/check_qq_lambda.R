@@ -1,17 +1,16 @@
 #!/usr/bin/env Rscript
-# Diagnostic-only: lambda + a small print-scale QQ plot from a raw GEMMA
-# assoc.txt, with NO post-hoc genomic-control rescaling applied. The point
-# is to see whether lambda computed directly on the model's own p-values
-# (LMM + kinship + intercept) is already close to 1, since a post-hoc GC
-# step recomputed on its own output is circular (see conversation).
+# Diagnostic: genomic inflation (lambda) and a small QQ plot from a raw GEMMA
+# assoc.txt, without genomic-control rescaling.
 #
 # Usage: Rscript check_qq_lambda.R <assoc_txt_path> <out_png_path>
+
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
 
 args <- commandArgs(trailingOnly = TRUE)
 assoc_path <- args[1]
 out_png    <- args[2]
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs")
+.libPaths(file.path(BASE_DIR, "software/R_libs"))
 library(data.table)
 library(qqman)
 

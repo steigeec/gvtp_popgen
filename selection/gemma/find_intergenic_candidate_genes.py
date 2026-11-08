@@ -4,23 +4,13 @@ Collects every gene ID that ever appears as a flanking gene in a pure
 snpEff "intergenic_region" annotation, across one or more outliers_*.ann.INFO
 files, and resolves each to its GFF "gene" feature (scaffold, start, end).
 
-Why this exists: intergenic_region has no distance cap (unlike
-upstream_gene_variant/downstream_gene_variant, which are bounded to
-snpEff's up/downstream window) -- it just names the nearest flanking
-gene(s) no matter how far away, sometimes tens of kb. curate_intergenic_by_ld.py
-uses the output of this script + ld_scan_scaffold.py to only keep those
-gene calls where the outlier SNP is in measurable LD (r2) with a SNP
-actually inside the gene body, instead of trusting raw proximity.
+intergenic_region names the nearest flanking gene at any distance, so these
+genes are later kept only if the SNP is in LD with the gene body
+(ld_scan_scaffold.py, curate_intergenic_by_ld.py).
 
-Gene ID extraction regex matches the one long-used in
-Launch_find_outlier_annotate.sh's `grep -oE` step, so results here stay in
-sync with what the pipeline would have extracted anyway. Some tokens
-pulled from an intergenic_region's Gene_ID field are transcript-style IDs
-rather than real gff "gene" IDs (same issue resolve_gene_ids.R exists to
-fix) -- resolved here the same way, via the GFF's own mRNA ID=/Parent=
-lines, before we can look up a gene body interval at all. Tokens that
-can't be resolved are dropped (logged to stderr): no coordinates, no LD
-test possible, and the "drop if unverifiable" policy applies here too.
+The gene ID regex is the same as in Launch_find_outlier_annotate.sh.
+Transcript-style IDs are resolved to gene IDs as in resolve_gene_ids.R;
+tokens that cannot be resolved are dropped (logged to stderr).
 
 Usage:
   python3 find_intergenic_candidate_genes.py outliers_*.ann.INFO \\
@@ -30,7 +20,9 @@ import argparse
 import re
 import sys
 
-GFF = "/private/groups/meyerlab/esteiger/genome/remove_duplicates_rm_internalstops_longest_isoform.gff"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+GFF = f"{BASE_DIR}/genome/remove_duplicates_rm_internalstops_longest_isoform.gff"
 
 GENE_TOKEN_RE = re.compile(
     r"MSTRG\.[0-9]+(?:\.p?[0-9]+)?|IDmodified-gene-[0-9]+|g[0-9]+|DEINVI_[0-9]+\.[0-9]+"
@@ -127,8 +119,7 @@ def main():
             continue
         scaffold, start, end = gene_intervals[gene_id]
         if scaffold != chrom:
-            # flanking gene should be on the same scaffold as the SNP;
-            # a mismatch means something's off with this token -- skip it
+            # flanking gene must be on the same scaffold as the SNP
             unresolved.append(tok)
             continue
         resolved[gene_id] = (scaffold, start, end)

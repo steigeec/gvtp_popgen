@@ -1,8 +1,13 @@
 #!/usr/bin/env Rscript
+# Individual heterozygosity from per-sample realSFS .ml files: coverage correction,
+# per-locality plots, and site-level models against fog, climate water deficit and Ne.
+# Run from the directory holding the *.ml files. Writes het.txt, plots, het_statistics_report.txt.
+# R library: BASE_DIR/software/R_libs
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs")
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
 
-#set up working environment
+.libPaths(file.path(BASE_DIR, "software/R_libs"))
+
 library(ggplot2)
 library(ggbeeswarm)
 library(dunn.test)
@@ -14,8 +19,8 @@ library(scales)
 
 gvtp_theme <- theme_bw() + 
   theme(
-    text = element_text(size = 70), # Sets size for all text elements
-    axis.text = element_text(angle = 45), # Only specify unique modifications
+    text = element_text(size = 70),
+    axis.text = element_text(angle = 45),
     plot.margin = unit(c(1, 1, 1, 1), "cm"),
     legend.key.height = unit(1, "cm"),
     legend.key.width = unit(1.5, "cm"),
@@ -31,10 +36,7 @@ gvtp_theme <- theme_bw() +
 
 popcolors <- c("CDFW" = "#e69f00", "CDFW_MR" = "#e69f00", "Strauss"="#009e73", "Point_Conception"="#0072b2", "VAFB_Lion_Head"="#f0e442", "VAFB_Arguello"="#d55e00", "Dangermond"="#56b4e9")         # Bang Wang color palette
 
-# Compact "5.0 x 10^-3" style axis labels (as a plotmath expression, so the
-# exponent renders superscripted) in place of scales::label_scientific()'s
-# longer "5.0e-03" — shorter labels needed less room once the axis text
-# went to a 45-degree angle.
+# Axis labels as "5.0 x 10^-3" plotmath expressions
 sci_axis_labels <- function(x) {
   lab <- sprintf("%.1e", x)
   lab <- sub("e([+-])0*(\\d)", "e\\1\\2", lab)
@@ -58,20 +60,19 @@ het$Het[x]<-a[2]/sum(a)
 write.table(het, "het.txt", row.names=F, col.names=F, quote=F)
 
 
-#Read in and merge with sample data
-sample<-read.table("/private/groups/meyerlab/esteiger/field_data.txt", header=T, sep="\t")
+# Read in and merge with sample data
+sample<-read.table(file.path(BASE_DIR, "field_data.txt"), header=T, sep="\t")
 het$Sample <- gsub("_rmdup\\.ml$", "", het$Sample)
 het<-merge(het, sample, all.x=T, by.x="Sample", by.y="SampleID")
 het$Clusters<-factor(het$Clusters, levels=c("VAFB_Lion_Head", "VAFB_Arguello", "Dangermond", "Point_Conception", "Strauss", "CDFW"))
 het$log<-log10(het$Cov)
 
-# We decide to remove individual 4531, which has neary twice the heterozygosity of the next-highest individual in the dataset
-# 	this individual has high coverage (nearly 29x), so that's not the issue
-#	it is potentially impacted by contamination of sample mixing. 
+# Exclude 4531: nearly twice the heterozygosity of the next-highest individual.
+# Its coverage is high (~29x), so this is likely contamination or sample mixing.
 het<-het[!(het$Sample %in% c("4531")),]
 
 
-# HET CORRECTION BY COVERAGE
+# ---------- Coverage correction ----------
 
 jpeg("He_boxplot_by_location.jpg", height=1000, width=1000)
 ggplot(het, aes(x=Clusters, y=Het))+
@@ -89,9 +90,8 @@ dev.off()
 # low coverage from genotype-likelihood allelic dropout, then a plateau once
 # coverage is sufficient for reliable heterozygote calling), so we fit a
 # self-starting asymptotic exponential (SSasymp). Fitting against raw Cov
-# (rather than log10(Cov)) saturates on the natural coverage scale, which
-# tracks the plateau much more sharply once re-expressed on the log axis
-# below (AIC -9799 vs. -9720 for the log10(Cov)-parameterized version).
+# rather than log10(Cov) tracks the plateau more closely
+# (AIC -9799 vs. -9720 for the log10(Cov) version).
 mod <- nls(Het ~ SSasymp(Cov, Asym, R0, lrc), data = het)
 summary(mod)
 
@@ -104,7 +104,6 @@ ggplot() +
   geom_line(data=het, aes(x=log10(Cov), y=fitted), color="black", linewidth=1) +
   labs(x="log10(coverage)", y="Nucleotide diversity")+
   scale_fill_manual(values=popcolors, guide="none") +
-  #scale_color_manual(values=popcolors, guide="none") +
   theme_bw(base_size=12)
 dev.off()
 
@@ -115,17 +114,15 @@ inbmed<-het
 jpeg('het_covg_corrected.jpg', units="in", height=5, width=6, res=300)
 ggplot() +
   geom_point(data=inbmed, colour="black", size=1.5, shape=21, aes(x=log10(Cov), y=residual, fill=Clusters))+ 
-  #geom_smooth(data=het, aes(x=log10(Cov), y=Het, color=Clusters), method = lm, se=FALSE) +
   labs(x="log10(coverage)", y="Nucleotide diversity")+
   scale_fill_manual(values=popcolors, guide="none") +
-  #scale_color_manual(values=popcolors, guide="none") +
   theme_bw(base_size=12)
 dev.off()
 
 inbmed$Year<-as.factor(inbmed$Year)
 inbmed$Clusters<-factor(inbmed$Clusters, levels=c("VAFB_Lion_Head", "VAFB_Arguello", "Dangermond", "Point_Conception", "Strauss", "CDFW"))
 
-# het AS BOXPLOY BY LOCATION WITH CORRECTION
+# Corrected He by locality
 jpeg("het_boxplot_by_location_correction.jpg", height=1200, width=800)
 ggplot(inbmed[inbmed$Year=="2020",], aes(x=Clusters, y=residual))+
 geom_boxplot(col="black", aes(fill=Clusters), outlier.shape = NA) +
@@ -142,7 +139,6 @@ dev.off()
 jpeg("HeResid_boxplot_by_location_forPub.jpg", height=1200, width=1000)
 ggplot(inbmed[inbmed$Year=="2020",], aes(x=Clusters, y=residual))+
 geom_boxplot(col="black", aes(fill=Clusters),  outlier.size = 4, lwd = 1.5) +
-#geom_quasirandom(width = 0.2, alpha = 0.5, size = 2) +
 scale_x_discrete(labels=c("CDFW"="CDFW", "Dangermond"="Dangermond", "Point_Conception"="Pt. Conception", "Strauss"="Strauss", "VAFB_Arguello"="Pt. Arguello", "VAFB_Lion_Head"="Lion's Head"))+
 scale_fill_manual(values=popcolors, guide="none") +
 labs(y="Residual nucleotide diversity")+
@@ -159,13 +155,13 @@ dunn.test(inbmed$residual, inbmed$Clusters, method = "bonferroni")
 
 
 
-# READ IN ALL ENVIRONMENTAL VARS I NEED
-env<-read.table("/private/groups/meyerlab/esteiger/env_var.txt", header=T, sep="\t")
+# ---------- Environmental variables ----------
+env<-read.table(file.path(BASE_DIR, "env_var.txt"), header=T, sep="\t")
 inbmed$Sample <- trimws(as.character(inbmed$Sample))
 env$SampleID    <- trimws(as.character(env$Sample))
 env<-merge(inbmed, env, by.x="Sample", by.y="SampleID")
 env<-env[env$Year.x=="2020",]
-edna <- read.table("/private/groups/meyerlab/esteiger/eDNA_env_data.csv", header=T, sep=",")
+edna <- read.table(file.path(BASE_DIR, "eDNA_env_data.csv"), header=T, sep=",")
 edna$SampleID <- trimws(as.character(edna$SampleID))
 env <- merge(env, edna[, c("SampleID", "terraclimate_climate_water_deficit_mm_30y",
                                        "terraclimate_precip_warmest_quarter_30y")],
@@ -173,10 +169,6 @@ env <- merge(env, edna[, c("SampleID", "terraclimate_climate_water_deficit_mm_30
 names(env)[names(env)=="terraclimate_climate_water_deficit_mm_30y"]   <- "deficit"
 names(env)[names(env)=="terraclimate_precip_warmest_quarter_30y"]     <- "precip_warm"
 
-# env variables rely on coordinates, so we must remove individuals with bad coordinates:
-# Additionally, we decide to remove individual 4531, which has neary twice the nucleotide diversity of the next-highest individual in the dataset
-# 	this individual has high coverage (nearly 29x), so that's not the issue
-#	it is potentially impacted by contamination of sample mixing. 
 
 
 # Order clusters by mean fog and color boxes by mean fog
@@ -315,7 +307,6 @@ dev.off()
 cat("Ne-fog plot written to Ne_vs_fog.jpg\n")
 
 
-# ---- Scatterplot: site-mean residual He vs fog (n=6) -------------------------
 # ---- 3. Site-level regressions: fog alone, Ne alone, fog + Ne ----------------
 mod_site_fog  <- lm(residual ~ fog,      data = site_full)
 mod_site_Ne   <- lm(residual ~ Ne,       data = site_full)
@@ -346,7 +337,7 @@ cat("Individual-level het vs fog plot written to het_vs_fog_individuals.jpg\n")
 
 
 # ==============================================================================
-# INDIVIDUAL-LEVEL PLOT v2: fog vs residual He, per-cluster smooth lines
+# INDIVIDUAL-LEVEL PLOT: fog vs residual He, per-cluster smooth lines
 # GLM: beta family (Het bounded [0,1]), logit link, fog + Clusters
 # Smooth lines shown only for clusters with significant fog slope (p < 0.05)
 # ==============================================================================
@@ -357,8 +348,7 @@ env$Het_adj <- (env$Het * (n_env - 1) + 0.5) / n_env
 
 # ==============================================================================
 # COMPETING BETA GLMs: Het_adj ~ [env_var] + Clusters
-# Candidate env predictors swapped in one at a time; all models fit on the
-# intersection of complete cases so AIC values are directly comparable.
+# All models fit on the same complete cases so AIC values are comparable
 # deficit = terraclimate_climate_water_deficit_mm_30y (renamed above)
 # ==============================================================================
 glm_candidates_het <- c(
@@ -463,12 +453,8 @@ cat("\n=== AIC comparison: fog models (lower = better fit) ===\n")
 print(AIC(mod_site_fog, mod_site_Ne, mod_site_both))
 
 
-# ---- 4. Variance partitioning: fog vs. Ne -> residual He --------------------
-# Decomposes total R-squared into:
-#   [a]   unique to fog
-#   [b]   shared (collinear; cannot be attributed to either)
-#   [c]   unique to Ne
-#   [d]   unexplained
+# ---- 4. Variance partitioning of residual He: fog vs. Ne --------------------
+# Fractions: [a] unique fog, [b] shared, [c] unique Ne, [d] unexplained
 vp <- varpart(site_full$residual, ~ fog, ~ Ne, data = site_full)
 cat("\n=== Variance partitioning: fog vs. Ne -> residual He ===\n")
 print(vp)
@@ -506,9 +492,7 @@ dev.off()
 cat("Ne-deficit plot written to Ne_vs_deficit.jpg\n")
 
 
-# ---- Added-variable plot: fog -> He, controlling for Ne ---------------------
-# Partial out Ne from both He and fog, then plot the residuals against each
-# other. The slope equals the fog coefficient from lm(residual ~ fog + Ne).
+# ---- Added-variable plot: He vs fog, controlling for Ne ---------------------
 e_He_Ne  <- residuals(lm(residual ~ Ne, data = site_full))
 e_fog_Ne <- residuals(lm(fog      ~ Ne, data = site_full))
 
@@ -574,8 +558,6 @@ dev.off()
 cat("Precip warmest quarter plot written to het_vs_precip_warm.jpg\n")
 
 # ---- 7. Variance partitioning: deficit vs. Ne --------------------------------
-# Same logic as for fog: decompose He variance into unique deficit, unique Ne,
-# shared, and unexplained fractions.
 vp_def <- varpart(site_full$residual, ~ deficit, ~ Ne, data = site_full)
 cat("\n=== Variance partitioning: deficit vs. Ne -> residual He ===\n")
 print(vp_def)
@@ -589,7 +571,7 @@ cat("Variance partitioning plot written to varpart_deficit_Ne.jpg\n")
 
 
 # ==============================================================================
-# COMPREHENSIVE STATISTICS REPORT
+# STATISTICS REPORT
 # ==============================================================================
 report_file <- "het_statistics_report.txt"
 sep         <- paste(rep("=", 65), collapse = "")

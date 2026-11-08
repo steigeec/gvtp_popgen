@@ -1,29 +1,28 @@
 #!/bin/bash
+# ANGSD allele frequencies for one genome chunk, keeping invariant sites (input to Tajima's D).
+# Usage: angsd_w_invar.sh <chunk> <bamlist> <reference.fasta>  (called by launch_angsd_w_invar.sh)
+
+BASE_DIR=/private/groups/meyerlab/esteiger
 
 chunk=$1
 BAMS=$2
 REF=$3
-indir="/private/groups/meyerlab/esteiger/variant_calling/angsd/chromo_30_chunks/"
-outdir="/private/groups/meyerlab/esteiger/selection/TajD"
+indir="${BASE_DIR}/variant_calling/angsd/chromo_30_chunks/"
+outdir="${BASE_DIR}/selection/TajD"
 export TMPDIR="/tmp"
 prefix="./"
 string=${chunk#"$prefix"}
-ANGSD="/private/groups/meyerlab/esteiger/software/angsd/angsd"
+ANGSD="${BASE_DIR}/software/angsd/angsd"
 
 echo -e "\nprocessing ${chunk}"
 
-# Here we do want to apply some rough coverage filters, which will help us early on throw out problematic (e.g. paralogous) sites
-# COVERAGE... 
-# 	same as for variable sites... 
-# TO KEEP ALL VARIABLE
-#	no min maf filter
-# 	no SNP pvalue filter
-#	no HWE pvalue filter
+# Rough coverage filters are applied here to throw out problematic (e.g. paralogous) sites early.
+# Coverage: same filters as for variable sites.
+# To keep all sites (variable and invariant): no min MAF filter, no SNP p-value filter, no HWE p-value filter.
+# Other filters:
+# -only_proper_pairs set to 0; I don't trust it anymore because of issues with polar bears.
 
-# OTHER FILTERS
-# -only_proper_pairs I don't trust anymore, because of issues with polar bears, so set to 0
-
-cd /private/groups/meyerlab/esteiger/mapping/merged
+cd ${BASE_DIR}/mapping/merged
 
 $ANGSD -P 9 -bam $BAMS -ref $REF -rf ${indir}/${string} -out ${outdir}/${string} \
 -doCounts 1 -doMaf 1 -doMajorMinor 4 -GL 2 -baq 1 \

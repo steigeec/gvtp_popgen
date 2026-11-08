@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """
-Sliding-window gene density and repeat (LINE / total) content for any list of
-scaffolds, using the same inputs, window size and conventions as sections 2-3
-of inversion_analysis.py (which is hard-wired to DEINVI_00006):
-
-  - genes / repeats are counted in a window only if they lie entirely inside it
-  - RepeatMasker hits flagged as overlapping (trailing "*") are excluded
-  - each scaffold's genome-wide reference = all OTHER scaffolds
+Sliding-window gene density and repeat content for any list of scaffolds, with
+the same inputs and conventions as sections 2-3 of inversion_analysis.py
+(features counted only if entirely inside a window; RepeatMasker hits flagged
+"*" excluded; genome-wide reference = all other scaffolds).
 
 Writes to OUT_DIR, per scaffold:
   gene_density_windows_<scaf>.tsv   start, end, n_genes, density (genes/Mb), mid
@@ -20,10 +17,12 @@ import sys
 
 import pandas as pd
 
-GFF      = "/private/groups/meyerlab/esteiger/genome/remove_duplicates_rm_internalstops_longest_isoform.gff"
-FASTA    = "/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked"
-RM_OUT   = "/private/groups/meyerlab/esteiger/inversions/gene_density/DEINVI_genome.fasta.LTRfix.out"
-OUT_DIR  = "/private/groups/meyerlab/esteiger/inversions/gene_density"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+GFF      = f"{BASE_DIR}/genome/remove_duplicates_rm_internalstops_longest_isoform.gff"
+FASTA    = f"{BASE_DIR}/genome/DEINVI_genome.fasta.masked"
+RM_OUT   = f"{BASE_DIR}/inversions/gene_density/DEINVI_genome.fasta.LTRfix.out"
+OUT_DIR  = f"{BASE_DIR}/inversions/gene_density"
 WIN_SIZE = 500_000
 
 CLASS_ORDER = ["LTR/Gypsy", "LTR/Copia", "LTR/Other", "LINE", "SINE",

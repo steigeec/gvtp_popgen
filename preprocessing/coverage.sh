@@ -1,10 +1,15 @@
 #!/bin/bash
+# Mean depth of one BAM over all, nuclear, chloroplast and mitochondrial
+# scaffolds; appends one row to OUTPUT_FILE. Called by run_coverage.sh.
+# Usage: coverage.sh <bam> <output_file>
+
+BASE_DIR=/private/groups/meyerlab/esteiger
 
 BAM=$1
 OUTPUT_FILE=$2
 
-CP_LIST="/private/groups/meyerlab/esteiger/genome/chloroplast.txt"
-MITO_LIST="/private/groups/meyerlab/esteiger/genome/mito.txt"
+CP_LIST="${BASE_DIR}/genome/chloroplast.txt"
+MITO_LIST="${BASE_DIR}/genome/mito.txt"
 
 prefix=$(basename "$BAM" | cut -d'_' -f1)
 

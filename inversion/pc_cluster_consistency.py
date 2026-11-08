@@ -1,23 +1,15 @@
 #!/usr/bin/env python3
 """
-Where along a scaffold do samples keep falling into the same three groups?
+Consistency of 3-group sample clustering along a scaffold.
 
-For each winPCA window, samples are split into 3 groups by k-means on PC1 and
-PC2 together (each scaled by the square root of its % variance explained, so
-the axes are weighted by importance). Because both PCs are used, a window
-where the arrangement signal sits on PC2 instead of PC1 still yields the same
-grouping, and k-means doesn't care about PC sign.
-
-Groupings are then compared between windows with the adjusted Rand index
-(ARI): 1 = the same samples are grouped together, ~0 = unrelated groupings.
-ARI ignores group labels, so "which cluster is called 0/1/2" doesn't matter.
+Per winPCA window, samples are split into 3 groups by k-means on PC1 and PC2
+(each scaled by sqrt(% variance explained)); groupings are compared between
+windows with the adjusted Rand index (ARI).
 
 Outputs (OUT_DIR):
-  <tag>_cluster_consistency.jpg  -- window x window ARI heatmap (blocks of
-                                    stable grouping = bright squares on the
-                                    diagonal), plus ARI between each window
-                                    and the window 1 Mb further on
-  <tag>_cluster_consistency.tsv  -- that 1-Mb-apart ARI profile
+  <tag>_cluster_consistency.jpg  window x window ARI heatmap, plus ARI between
+                                 each window and the window 1 Mb further on
+  <tag>_cluster_consistency.tsv  that 1-Mb-apart ARI profile
 
 Usage: pc_cluster_consistency.py <winpca_prefix> <tag> [<tag2 prefix> <tag2> ...]
 """
@@ -33,9 +25,11 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 from sklearn.metrics import adjusted_rand_score
 
-OUT_DIR   = "/private/groups/meyerlab/esteiger/inversions/all_localities"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+OUT_DIR   = f"{BASE_DIR}/inversions/all_localities"
 K         = 3
-THIN      = 10      # use every 10th window (10 kb step -> 100 kb spacing) for the heatmap
+THIN      = 10      # use every 10th window (10 kb step, so 100 kb spacing) for the heatmap
 LAG       = 100     # windows between compared pairs in the profile (100 x 10 kb = 1 Mb, non-overlapping)
 # grey boxes per scaffold, as in DEINVI_0006_stacked.py (none drawn for others)
 SHADE_REGIONS = {"DEINVI_00006": [(13.0, 29.4), (30.4, 43.7), (44.6, 49.3)]}

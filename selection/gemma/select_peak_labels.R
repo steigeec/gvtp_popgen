@@ -1,49 +1,31 @@
 #!/usr/bin/env Rscript
 #
-# Reads the kinship-corrected mixed-model GEMMA output (output/pheno<N>_lmm_
-# results.assoc.txt), NOT the older un-corrected output/pheno<N>_results.assoc.txt
-# (deleted — it let a large chunk of the DEINVI_00006 44-49Mb inversion region's
-# structure-confounded signal through: 373 "Bonferroni-significant" SNPs there
-# under the old model collapsed to 3 once kinship was modeled properly).
+# Selects one gene to label each independent peak of the 40000_3 retained-SNP
+# set (same retention and 40 kb peak-merge rules as annotated_manhattan.R),
+# by rank-sum of two factors (lower total wins; GEMMA p-value and mutation
+# impact are reported but not used for selection):
+#   (A) gene in the leading edge of a GSEA Biological Process term with pval < 0.005;
+#   (C) Putative_Adaptive_Role/Citation in gene_summary_all.tsv
+#       (citation > role without citation > none).
+# Candidate genes per peak are the SnpEff-assigned genes of its SNPs
+# (<var_name>/snp_to_gene_<var_name>.tsv from build_snp_gene_map.py). Only genes
+# with a usable label (Acronym or cleaned ortholog name) are considered.
 #
-# For each independent peak in the 40000_3 retained-SNP set (same Bonferroni
-# + 40kb-window retention + 40kb peak-merge logic as annotated_manhattan.R),
-# select a single gene to label it with, combining two factors via a
-# rank-sum (lower total rank wins; GEMMA p-value and mutation impact are
-# NOT used to choose which gene is selected, only carried through as
-# informational columns):
-#   (A) GSEA GO-term enrichment — is the gene in the leading edge of any
-#       significantly enriched Biological Process (BP) term (pval < 0.005)
-#       for this variable?
-#   (C) Functional tie to adaptation — Putative_Adaptive_Role/Citation from
-#       gene_summary_all.tsv (real citation > role but no citation > none).
-#
-# A peak's candidate genes are found via <var_name>/snp_to_gene_<var_name>.tsv
-# (built by build_snp_gene_map.py from outliers_<var_name>.ann.INFO using the
-# same 3-tier ID resolver validated for the Mutation_Types/Gene_Coordinates
-# fix), i.e. each retained SNP's ACTUAL SnpEff-assigned gene(s) — not
-# coordinate-range overlap, which misses genes SnpEff correctly assigned via
-# its upstream/downstream/intergenic flanking window (commonly several kb
-# outside the gene's own coordinate span, and the majority case here since
-# ~78% of outlier SNPs are intergenic).
-#
-# Writes <var_name>/for_manhattan_label_<var_name>.tsv with only the winning
-# gene per peak (one row per peak that has >=1 labelable candidate; peaks
-# with none are simply omitted).
-#
-# Only genes with a usable label are considered at all (same Acronym ->
-# cleaned-Ortholog -> exclude logic as annotated_manhattan.R) — there'd be
-# nothing to write on the plot otherwise.
+# Input: output/pheno<N>_lmm_results.assoc.txt (kinship-corrected GEMMA LMM)
+# Output: <var_name>/for_manhattan_label_<var_name>.tsv (winning gene per peak)
+# Usage: Rscript select_peak_labels.R <pheno_num> <var_name>
+
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
 
 args <- commandArgs(trailingOnly=TRUE)
 pheno_num <- args[1]
 var_name  <- args[2]
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs")
+.libPaths(file.path(BASE_DIR, "software/R_libs"))
 library(data.table)
 library(dplyr)
 
-setwd("/private/groups/meyerlab/esteiger/selection/gemma/")
+setwd(file.path(BASE_DIR, "selection/gemma/"))
 dir.create(var_name, showWarnings=FALSE, recursive=TRUE)
 
 dic <- read.table("scaffold_snp_map.txt")
@@ -51,7 +33,7 @@ dic <- unique(dic[,c("V1","V3")])
 scaf2chr <- setNames(as.character(dic$V1), dic$V3)
 chr2scaf <- setNames(dic$V3, as.character(dic$V1))
 
-# ── Recompute retained (40000_3) SNPs — identical to annotated_manhattan.R ──
+# ── Recompute retained (40000_3) SNPs, as in annotated_manhattan.R ─────────
 gemma <- read.table(paste0("output/pheno", pheno_num, "_lmm_results.assoc.txt"), header=T)
 names(gemma)[1:3] <- c("Chromosome", "SNP", "Position")
 print(paste("No rows in input:", nrow(gemma)))
@@ -140,15 +122,11 @@ peaks <- retained_df %>%
 peaks$Scaffold <- chr2scaf[peaks$Chromosome]
 print(paste("Independent peaks:", nrow(peaks)))
 
-# ── Gene name/label lookup — same Acronym -> cleaned-Ortholog -> exclude
-# logic as annotated_manhattan.R ────────────────────────────────────────────
+# ── Gene label lookup (Acronym, else cleaned ortholog name), as in annotated_manhattan.R ──
 gene_summary <- read.table("gene_summary_all.tsv", header=TRUE, sep="\t",
                             quote="", comment.char="", stringsAsFactors=FALSE)
 genes <- gene_summary[gene_summary$Variable == var_name, ]
-# Some Acronym values are pure punctuation/whitespace artifacts from
-# upstream parsing (e.g. literal ";" or "; ; ; ; ;") — reject those, but
-# keep legitimate symbols that happen to contain special characters
-# (e.g. "C/VIF1", "EIF(ISO)4E") by requiring at least one alphanumeric.
+# Reject Acronym values without any alphanumeric character (e.g. "; ; ;")
 has_acronym <- !is.na(genes$Acronym) & genes$Acronym != "" & genes$Acronym != "NA" &
                 grepl("[A-Za-z0-9]", genes$Acronym)
 is_generic_ortholog <- function(x) {
@@ -170,10 +148,7 @@ genes$Label <- ifelse(has_acronym, genes$Acronym, genes$Orthologs_clean)
 genes <- genes[!is.na(genes$Label), ]
 print(paste("Genes for", var_name, "with a usable label:", nrow(genes)))
 
-# ── SNP -> gene mapping (built by build_snp_gene_map.py from
-# outliers_<var>.ann.INFO, using the same 3-tier ID resolver validated for
-# the Mutation_Types/Gene_Coordinates fix) — see header note for why this
-# replaces coordinate-range overlap ────────────────────────────────────────
+# ── SNP to gene mapping (build_snp_gene_map.py) ─────────────────────────────
 snp_gene_file <- file.path(var_name, paste0("snp_to_gene_", var_name, ".tsv"))
 snp_gene <- read.table(snp_gene_file, header=TRUE, sep="\t", quote="", comment.char="",
                         stringsAsFactors=FALSE)
@@ -201,9 +176,7 @@ for (i in seq_len(nrow(retained_df))) {
 }
 
 # ── GSEA leading-edge lookup: gene -> significant terms it drives ─────────
-# GSEA_GO_results_<var>.tsv is already filtered to nominal p<0.05, but genes
-# are only credited with a GO-term hit (factor A) for Biological Process
-# (BP) terms stricter than that, at pval < 0.005, per user request.
+# GSEA_GO_results_<var>.tsv is filtered to p < 0.05; factor A uses BP terms with pval < 0.005.
 GSEA_PVAL_CUTOFF <- 0.005
 gsea_file <- file.path(var_name, paste0("GSEA_GO_results_", var_name, ".tsv"))
 gene_go_terms <- new.env()
@@ -239,9 +212,7 @@ best_impact <- function(impact_str) {
   levels[which.min(impact_order[levels])]
 }
 
-# ── Build candidate table: for each labelable gene, use gene_hits (built
-# above from the SNP -> gene map) to find which peak(s) it was actually
-# SnpEff-assigned to, and its best p-value within each ────────────────────
+# ── Candidate table: peak(s) and best p-value for each labelable gene ───────
 candidates <- list()
 for (i in seq_len(nrow(genes))) {
   gid <- genes$Gene_Name[i]
@@ -282,10 +253,7 @@ if (length(candidates) == 0) {
 } else {
   cand_df <- do.call(rbind, candidates)
 
-  # ── Rank-sum selection within each peak — GO-term association (BP,
-  # p<0.005) and adaptive-role support only; GEMMA p-value and mutation
-  # impact are not used to pick the winner (informational columns only).
-  # Ties are broken alphabetically by Label for a deterministic pick.
+  # ── Rank-sum selection within each peak; ties broken alphabetically by Label
   adaptive_badness <- c("Role+Citation" = 0, "Role only" = 1, "None" = 2)
   cand_df$GSEA_Hit   <- !is.na(cand_df$GSEA_GO_Terms)
   cand_df$A_badness  <- ifelse(cand_df$GSEA_Hit, 0, 1)
@@ -305,17 +273,11 @@ if (length(candidates) == 0) {
 
   peaks_with_cand <- unique(cand_df$peak_id)
 
-  # Keep only the winning gene per peak (Selected == TRUE); the full
-  # per-peak candidate breakdown (all genes considered, individual factor
-  # ranks) is available by removing this filter if the audit trail is
-  # needed again.
+  # Keep only the winning gene per peak (remove this filter to see all candidates and ranks)
   cand_df <- cand_df[cand_df$Selected == TRUE, ]
   cand_df <- merge(cand_df, peaks[, c("peak_id","Scaffold","Peak_Start","Peak_End","Peak_N_SNPs")], by = "peak_id")
 
-  # If the same gene wins more than one peak (common for adjacent 40kb
-  # windows both falling in that gene's flanking SnpEff-assignment range),
-  # collapse to a single row spanning all of those peaks' coordinates
-  # rather than repeating the gene label on the plot.
+  # A gene winning several adjacent peaks gets one row spanning them all
   cand_df <- cand_df %>%
     group_by(Gene_ID) %>%
     summarise(

@@ -10,7 +10,8 @@
 ##   pop_hours_hrrr.txt, pop_hours_windninja.txt (6 population centroids)
 ##   strauss_hours_windninja.txt (736 Tranquillon Mtn individuals, 100 m WindNinja run)
 ##   Matrices are hours from row site (source) to column site; asymmetric.
-## R libraries: R_libs_windscape, R_libs (windscape, terra)
+## R libraries: windscape 2.0.0 and terra 1.9-50 (CRAN) in BASE_DIR/software/R_libs_windscape,
+##   installed with install.packages(c("windscape", "terra"), lib = <that dir>)
 ## Usage: Rscript windscape_connectivity.R
 
 BASE_DIR <- "/private/groups/meyerlab/esteiger"

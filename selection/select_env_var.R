@@ -1,11 +1,13 @@
 #!/usr/bin/env Rscript
-# =============================================================================
-# explore_env_var.R
-# =============================================================================
+# Selection of environmental variables for GEMMA: merge env_var.txt, field_data.txt and
+# eDNA_env_data.csv, filter candidates by missingness and spatial resolution, then
+# collinearity heatmaps and PCA. Outputs written to BASE_DIR/selection.
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs")
-setwd("/private/groups/meyerlab/esteiger")
-outdir <- "/private/groups/meyerlab/esteiger/selection"
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
+
+.libPaths(file.path(BASE_DIR, "software/R_libs"))
+setwd(BASE_DIR)
+outdir <- file.path(BASE_DIR, "selection")
 
 # ==============================================================================
 # 1. READ AND MERGE
@@ -25,15 +27,12 @@ merged <- merge(merged, edna, by = "SampleID", all.x = TRUE)
 
 cat(sprintf("Merged dataset: %d samples, %d columns\n\n", nrow(merged), ncol(merged)))
 
-# aspect is circular (degrees, 0-360 wraps around) so Pearson/Spearman on the
-# raw value is not meaningful. Decompose into northness/eastness (unit-circle
-# projection) — two ordinary linear variables that losslessly encode the same
-# direction information and can be used in correlation/PCA/GEMMA directly.
+# aspect is circular, so use northness/eastness (cos/sin) instead
 merged$aspect_northness <- cos(merged$aspect * pi / 180)
 merged$aspect_eastness  <- sin(merged$aspect * pi / 180)
 
 # ==============================================================================
-# 2. CONFIRMED YES VARIABLES (explicit user decisions)
+# 2. CONFIRMED YES VARIABLES
 # ==============================================================================
 confirmed_yes <- c(
   # Fog / precip (sampling year)
@@ -49,25 +48,21 @@ confirmed_yes <- c(
 )
 
 # ==============================================================================
-# 3. CONFIRMED NO — variables explicitly excluded from analysis
+# 3. CONFIRMED NO: variables excluded from analysis
 # ==============================================================================
 confirmed_no <- c(
-  # the germination ear variables"
+  # germination-year variables
   "fog_germ_yr", "BIO12_germ_yr", "BIO15_germ_yr", "BIO18_germ_yr", "BCM_germ_yr",
-  # CHILI — excluded (TODO: confirm rationale)
+  # CHILI
   "CHILI",
-  # textureClass_10cm — dataset only has 2 valid texture classes (4 and 7;
-  # -999999 is a missing-data sentinel, not a real class) — too little
-  # variation to be a useful covariate
+  # textureClass_10cm: only 2 texture classes present (4 and 7; -999999 = missing)
   "textureClass_10cm",
-  # dynamic_world_change_dataset_land_cover_fractional_change — land-cover
-  # change / habitat loss is not expected to be a direct driver of selection
-  # in this system, so excluded even though it is a valid numeric variable
+  # dynamic_world_change_dataset_land_cover_fractional_change: land-cover change not a likely selective driver
   "dynamic_world_change_dataset_land_cover_fractional_change",
   # TerraClimate (~4.6 km resolution)
   "terraclimate_climate_water_deficit_mm_30y",
   "terraclimate_soil_moisture_mm_30y",
-  # Copernicus fractional cover — not ecologically informative for this project
+  # Copernicus fractional cover: not ecologically informative here
   "copernicus_fractional_cover_tree_cover_fraction",
   "copernicus_fractional_cover_shrub_cover_fraction",
   "terraclimate_snow_water_equivalent_mm_30y",
@@ -78,11 +73,11 @@ confirmed_no <- c(
   "copernicus_fractional_cover_water_permanent_cover_fraction",
   "copernicus_fractional_cover_water_seasonal_cover_fraction",
   "copernicus_fractional_cover_moss_lichen_cover_fraction",
-  # Hansen forest cover/loss — not of interest
+  # Hansen forest cover/loss
   "hansen_forest_forest_cover_2000_percent",
   "hansen_forest_forest_loss_binary_2001_2024",
   "hansen_forest_forest_loss_rate_pct",
-  # JRC surface water — not of interest
+  # JRC surface water
   "jrc_surface_water_max_water_extent_binary", 
   # Any 10-year variables (we're interested in the 30-year timespan)
   "era5_land_mean_net_solar_radiation_w_m2_10y",
@@ -130,7 +125,7 @@ confirmed_no <- c(
   "terraclimate_growing_season_length_10c_10y",
   "terraclimate_growing_season_length_5c_10y",
   "terraclimate_hottest_year_mean_temp_c_10y",
-  # Watershed — not ecologically relevant for this project
+  # Watershed
   "watershed_watershed_id",
   "watershed_watershed_pfaf_id",
   "watershed_watershed_upstream_area_km2",
@@ -187,35 +182,35 @@ confirmed_no <- c(
   "nighttime_lights_mean_annual_nightlights_nw_cm2_sr_3y",
   "nighttime_lights_mean_ephemeral_nightlights_3y",
   "nighttime_lights_mean_persistent_nightlights_3y",
-  # Metadata / identifiers — not analytical variables
+  # Metadata / identifiers
   "protected_areas_protected_area_name",
   "protected_areas_protected_area_iucn_cat",
   "resolve_ecoregions_ecoregion_name_2017",
   "resolve_ecoregions_biogeographic_realm_2017",
-  # Terrain duplicates — elevation, slope, aspect already in confirmed_yes
+  # Terrain duplicates (elevation, slope, aspect already in confirmed_yes)
   "terrain_elevation_m",
   "terrain_slope_deg",
   "terrain_aspect_deg",
   "terrain_topo_heterogeneity_stddev",
-  # Soil duplicates — corresponding variables already in confirmed_yes
+  # Soil duplicates of confirmed_yes variables
   "soil_soil_sand_percent_0_30cm", "soil_soil_sand_percent_0cm",
   "soil_soil_bulk_density_cg_cm3_0_30cm", "soil_soil_bulk_density_cg_cm3_0cm",
   "soil_soil_water_content_v_percent_0_30cm", "soil_soil_water_content_v_percent_0cm",
   "soil_soil_texture_class_0cm",
   "soil_soil_great_group",
-  # New soil properties — 0 cm depth excluded (0–30 cm retained as candidate)
+  # SoilGrids properties at 0 cm (0-30 cm kept as candidates)
   "soil_soil_ph_h2o_0cm",
   "soil_soil_organic_carbon_g_kg_0cm",
   "soil_soil_clay_percent_0cm",
-  # New Copernicus columns — not ecologically informative for this project
+  # Other Copernicus columns: not ecologically informative here
   "copernicus_fractional_cover_snow_ice_cover_fraction",
   "copernicus_fractional_cover_class_probability",
   "copernicus_fractional_cover_land_cover_class",
   "copernicus_fractional_cover_forest_type",
-  # Land cover / biome categorical — not informative as PCA/RF axes
+  # Categorical land cover / biome
   "esa_worldcover_dataset_land_cover_class_2020",
   "potential_biomes_potential_biome",
-  # TerraClimate temperature (30y) — not a primary driver for this project
+  # TerraClimate temperature (30y)
   "terraclimate_annual_mean_temp_30y",
   "terraclimate_max_temp_c_30y",
   "terraclimate_min_temp_c_30y",
@@ -231,7 +226,7 @@ confirmed_no <- c(
   "terraclimate_mean_temp_wettest_quarter_30y",
   "terraclimate_hottest_year_mean_temp_c_30y",
   "landsat_peak_season_surface_temp_c",
-  # TerraClimate precipitation (30y) — covered by BIO12/BIO15 and existing candidates
+  # TerraClimate precipitation (30y): covered by BIO12/BIO15 and other candidates
   "terraclimate_annual_precip_30y",
   "terraclimate_precipitation_accumulation_mm_30y",
   "terraclimate_precip_seasonality_30y",
@@ -242,7 +237,7 @@ confirmed_no <- c(
   "terraclimate_precip_wettest_month_30y",
   "terraclimate_precip_wettest_quarter_30y",
   "terraclimate_runoff_mm_30y",
-  # TerraClimate growing season / phenology (30y) — not primary interest
+  # TerraClimate growing season / phenology (30y)
   "terraclimate_gdd_10c_30y",
   "terraclimate_gdd_5c_30y",
   "terraclimate_growing_season_length_10c_30y",
@@ -250,7 +245,7 @@ confirmed_no <- c(
 )
 
 # ==============================================================================
-# 4. CANDIDATE POOL — variables still to be decided
+# 4. CANDIDATE POOL: variables still to be decided
 #    (excludes confirmed YES and confirmed NO)
 # ==============================================================================
 candidates <- c(
@@ -269,7 +264,7 @@ candidates <- c(
   "terraclimate_precip_annual_cv_30y",
   "terraclimate_severe_drought_month_count_30y",
   "terraclimate_driest_year_precip_mm_30y",
-  # New SoilGrids soil properties (250 m, 0–30 cm depth)
+  # SoilGrids soil properties (250 m, 0-30 cm depth)
   "soil_soil_ph_h2o_0_30cm",
   "soil_soil_organic_carbon_g_kg_0_30cm",
   "soil_soil_clay_percent_0_30cm"
@@ -302,7 +297,7 @@ cat(sprintf("Strauss subsampled: %d individuals kept (of %d total)\n",
 cat(sprintf("Analysis dataset: %d samples\n\n", nrow(analysis_data)))
 
 # ==============================================================================
-# 6. FILTER 1 — missingness (> 10% missing → drop)
+# 6. FILTER 1: missingness (drop if > 10% missing)
 #    Applied to analysis_data; checks both confirmed_yes and candidate variables.
 # ==============================================================================
 n <- nrow(analysis_data)
@@ -312,7 +307,7 @@ all_check <- c(confirmed_yes, candidates)
 all_check  <- all_check[all_check %in% names(analysis_data)]
 pct_miss   <- sapply(all_check, function(v) 100 * sum(is.na(analysis_data[[v]])) / n)
 
-# Confirmed YES variables — report missingness for all, flag those > threshold
+# Confirmed YES variables: report missingness for all, flag those > threshold
 cat("Confirmed-YES variable missingness in analysis subset:\n")
 for (v in confirmed_yes[confirmed_yes %in% names(analysis_data)]) {
   flag <- if (pct_miss[v] > 10) "  *** EXCEEDS 10% — add to dropped_for_missingness" else ""
@@ -328,7 +323,7 @@ cat(sprintf("  Dropped: %d  |  Remaining: %d\n", length(fail_miss), length(pass_
 if (length(fail_miss)) cat("  Dropped:", paste(fail_miss, collapse=", "), "\n")
 
 # ==============================================================================
-# 7. FILTER 2 — spatial resolution (> 1 km → drop)
+# 7. FILTER 2: spatial resolution (drop if > 1 km)
 #    Native resolutions (metres) per data source:
 #      SRTM / terrain derived : 30 m
 #      SoilGrids              : 250 m
@@ -339,8 +334,8 @@ if (length(fail_miss)) cat("  Dropped:", paste(fail_miss, collapse=", "), "\n")
 #      MODIS (FAPAR, LST)     : 500–1000 m
 #      WorldClim BIO          : ~1000 m (30 arc-sec)
 #      MODIS FLCC (fog)       : 1000 m
-#      TerraClimate           : ~4638 m (1/24°)  ← EXCEEDS 1 km
-#      ERA5-Land              : ~11132 m (0.1°)  ← EXCEEDS 1 km
+#      TerraClimate           : ~4638 m (1/24°)   > 1 km
+#      ERA5-Land              : ~11132 m (0.1°)   > 1 km
 # ==============================================================================
 resolution_m <- c(
   era5_land_mean_net_solar_radiation_w_m2_30y              = 11132,
@@ -371,7 +366,7 @@ resolution_m <- c(
   terraclimate_severe_drought_month_count_10y              = 4638,
   terraclimate_driest_year_precip_mm_30y                   = 4638,
   terraclimate_driest_year_precip_mm_10y                   = 4638,
-  # SoilGrids — new soil property candidates
+  # SoilGrids soil property candidates
   soil_soil_ph_h2o_0_30cm                                  = 250,
   soil_soil_organic_carbon_g_kg_0_30cm                     = 250,
   soil_soil_clay_percent_0_30cm                            = 250
@@ -399,8 +394,7 @@ print(surv, row.names = FALSE)
 
 COLLINEAR_THRESH <- 0.7
 
-# No categorical/circular variables remain — aspect was replaced with the
-# numeric aspect_northness/aspect_eastness decomposition (see section 1).
+# No categorical or circular variables remain (aspect replaced in section 1)
 excl_nonnumeric <- character(0)
 
 # ==============================================================================
@@ -469,7 +463,7 @@ remove_collinear <- c("bulkDensity_10cm", # remove instead of fog (-0.70)
 			"BIO12", # remove instead of BIO18 (0.697, below the 0.7 auto-flag threshold but visibly collinear on the heatmap)
 			"PercVolSoilH20_10cm", # remove instead of fog (-0.655, below the 0.7 auto-flag threshold but visibly collinear on the heatmap)
 			"soil_soil_ph_h2o_0_30cm") # remove instead of BCM_30y (0.640) and BIO18 (-0.577), both below the 0.7 auto-flag threshold but visibly collinear on the heatmap
-			# fapar_annual_fapar retained despite collinearity with BIO15 (-0.541) per user decision
+			# fapar_annual_fapar kept despite collinearity with BIO15 (-0.541)
 
 all_vars <- c(confirmed_yes, pass_both)
 env_vars <- all_vars[!all_vars %in% remove_collinear]
@@ -487,7 +481,7 @@ dropped_for_missingness <- c(
 env_vars <- env_vars[!env_vars %in% dropped_for_missingness]
 
 # ==============================================================================
-# 10. ANALYSIS VARIABLES FOR COLLINEARITY / PCA 
+# 10. ANALYSIS VARIABLES FOR COLLINEARITY / PCA
 #     fog_germ_yr and BIO12_germ_yr excluded; fog and BIO12 used instead.
 #     The _germ_yr columns are retained in the exported file (section 13).
 # ==============================================================================
@@ -495,14 +489,12 @@ env_vars <- env_vars[!env_vars %in% dropped_for_missingness]
 analysis_vars <- env_vars[!env_vars %in% c("fog_germ_yr", "BIO12_germ_yr")]
 
 # Numeric subset for correlation / PCA
-# No exclusions needed — aspect_northness/aspect_eastness are ordinary
-# numeric variables (see the northness/eastness decomposition in section 1).
 pca_exclude <- character(0)
 analysis_num <- analysis_vars[!analysis_vars %in% pca_exclude]
 analysis_num <- analysis_num[analysis_num %in% names(analysis_data)]
 
 # ==============================================================================
-# 11. COLLINEARITY — Spearman correlations (analysis subset, no _germ_yr)
+# 11. COLLINEARITY: Spearman correlations (analysis subset, no _germ_yr)
 #     Pairs with |rho| >= 0.7 flagged.
 # ==============================================================================
 COLLINEAR_THRESH <- 0.7
@@ -527,8 +519,7 @@ print(flagged_pairs, row.names = FALSE)
 hc_ord     <- hclust(as.dist(1 - cor_mat))$order
 var_levels <- rownames(cor_mat)[hc_ord]
 
-# Display labels for the plot only (underlying variable names elsewhere in
-# the script, e.g. env_vars/analysis_num, are untouched)
+# Display labels for the plot only
 plot_labels <- c(
   BCM_30y            = "CWD",
   fog                = "FLCC",
@@ -549,10 +540,7 @@ cor_df$var1 <- factor(plot_labels[as.character(cor_df$var1)],
 cor_df$var2 <- factor(plot_labels[as.character(cor_df$var2)],
                       levels = plot_labels[var_levels])
 
-# Sized and font-scaled for print (e.g. a single figure column in a paper)
-# rather than on-screen viewing: physical inches + 300 dpi so the figure is
-# still legible at a small placed size, instead of a huge low-density raster
-# that goes illegible when shrunk down.
+# Sized for print (single figure column, 300 dpi)
 jpeg(file.path(outdir, "env_correlation_heatmap.jpg"),
      width = 5, height = 4.5, units = "in", res = 300)
 print(
@@ -647,7 +635,7 @@ dev.off()
 cat(sprintf("Biplot written to %s\n", file.path(outdir, "env_pca_biplot.jpg")))
 
 # ==============================================================================
-# 13. FINAL SET — second collinearity + PCA pass excluding FAPAR, northness,
+# 13. FINAL SET: second collinearity and PCA pass excluding FAPAR, northness,
 #     and eastness, for comparison against the full analysis_num set above.
 #     Outputs suffixed _FinalSet.
 # ==============================================================================

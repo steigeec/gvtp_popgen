@@ -1,4 +1,5 @@
 #!/bin/bash
+# Tajima's D in 100-SNP windows for all five populations within one job (populations run in parallel).
 #SBATCH --job-name=TajD_all
 #SBATCH --partition=long
 #SBATCH --nodes=1
@@ -7,17 +8,19 @@
 #SBATCH --time=168:00:00
 #SBATCH --output=TajD_all_%j.log
 
-outdir=/private/groups/meyerlab/esteiger/selection/TajD
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+outdir=${BASE_DIR}/selection/TajD
 sites_file=${outdir}/all_sites
 regions=${outdir}/all_chrs.txt
-REF=/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked
-ANGSD=/private/groups/meyerlab/esteiger/software/angsd_dev/angsd
-RS=/private/groups/meyerlab/esteiger/software/angsd_dev/misc/realSFS
-THETASTAT=/private/groups/meyerlab/esteiger/software/angsd_dev/misc/thetaStat
-TAJIMAS=/private/groups/meyerlab/esteiger/gvtp_popgen/selection/TajD/Tajimas_SNPmidpoint.py
+REF=${BASE_DIR}/genome/DEINVI_genome.fasta.masked
+ANGSD=${BASE_DIR}/software/angsd_dev/angsd
+RS=${BASE_DIR}/software/angsd_dev/misc/realSFS
+THETASTAT=${BASE_DIR}/software/angsd_dev/misc/thetaStat
+TAJIMAS=${BASE_DIR}/gvtp_popgen/selection/TajD/Tajimas_SNPmidpoint.py
 THREADS=4
 
-cd /private/groups/meyerlab/esteiger/mapping/merged
+cd ${BASE_DIR}/mapping/merged
 
 run_tajd() {
     local name=$1
@@ -75,7 +78,7 @@ run_tajd() {
     echo "[${name}] Done."
 }
 
-bamdir=/private/groups/meyerlab/esteiger/mapping/merged
+bamdir=${BASE_DIR}/mapping/merged
 
 run_tajd "strauss"    "${bamdir}/bamlist_4x_strauss.txt"    50 70 &
 run_tajd "arguello"   "${bamdir}/bamlist_4x_arguello.txt"   10 14 &

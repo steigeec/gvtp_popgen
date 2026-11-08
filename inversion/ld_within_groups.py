@@ -1,22 +1,12 @@
 #!/usr/bin/env python3
 """
-Inversion vs. low-recombination test for the INV1 core on DEINVI_00006.
+LD decay within INV1 haplotype groups on DEINVI_00006 (inversion vs. low
+recombination).
 
-If the haplotype structure is caused by an inversion, recombination is
-suppressed only in heterozygotes: WITHIN each homozygous group, LD should
-decay with distance roughly as it does in ordinary parts of the chromosome.
-If recombination is simply low there for everyone, LD stays high within
-each group too.
-
-Groups: Strauss individuals split into 3 groups by sign-aligned mean PC1 over
-the INV1 core (Strauss-only winPCA run): hom1 / het / hom2. Groups are
-subsampled to the same size (N_PER_GROUP); "pooled" = random individuals from
-all three groups (structure present, the usual LD situation).
-LD: r^2 between imputed ALT dosages (DS) from the GWAS VCF, for SNPs with
-within-group MAF >= MIN_MAF, in distance bins; median r^2 per bin.
-Caveat: imputation uses haplotype information and can inflate LD in strongly
-structured regions; confirm a borderline result with ngsLD on genotype
-likelihoods for the same individuals.
+Groups: Strauss individuals split into hom1 / het / hom2 by mean PC1 over the
+INV1 core (Strauss-only winPCA), subsampled to N_PER_GROUP; "pooled" = random
+individuals from all three groups. LD: r^2 between imputed ALT dosages (DS) from
+the GWAS VCF for SNPs with within-group MAF >= MIN_MAF; median r^2 per distance bin.
 
 Usage: ld_within_groups.py
 """
@@ -27,9 +17,11 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 
-VCF = "/private/groups/meyerlab/esteiger/variant_calling/angsd/postParalog_MAF_auto_GLimp_clean.vcf.gz"
-PC1 = "/private/groups/meyerlab/esteiger/inversions/all_localities/DEINVI_00006_GL_maf5_Strauss_flipped.pc_1.tsv.gz"
-OUT = "/private/groups/meyerlab/esteiger/inversions/breakpoints/ld_within_groups.tsv"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+VCF = f"{BASE_DIR}/variant_calling/angsd/postParalog_MAF_auto_GLimp_clean.vcf.gz"
+PC1 = f"{BASE_DIR}/inversions/all_localities/DEINVI_00006_GL_maf5_Strauss_flipped.pc_1.tsv.gz"
+OUT = f"{BASE_DIR}/inversions/breakpoints/ld_within_groups.tsv"
 CHROM = "DEINVI_00006"
 CORE = (46_300_000, 49_100_000)
 REGIONS = {"INV1 core 46.3-49.1": CORE, "control 2-8 Mb": (2_000_000, 8_000_000),

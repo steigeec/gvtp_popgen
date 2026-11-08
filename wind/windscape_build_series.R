@@ -13,7 +13,9 @@
 ##   Each has 2 x 4896 layers ordered "uuvv" (as windscape expects), named u_/v_<UTC timestamp>.
 ## Grids: HRRR 0.03 deg; WindNinja region 460 m mesh to 0.005 deg; Tranquillon
 ##   100 m mesh to 0.001 deg, inset ~1 km from the WindNinja domain edge.
-## R libraries: R_libs_windscape, R_libs (terra, data.table)
+## R libraries: windscape 2.0.0 and terra 1.9-50 (CRAN) in BASE_DIR/software/R_libs_windscape,
+##   installed with install.packages(c("windscape", "terra"), lib = <that dir>);
+##   data.table from BASE_DIR/software/R_libs
 ## Usage: Rscript windscape_build_series.R
 
 BASE_DIR <- "/private/groups/meyerlab/esteiger"

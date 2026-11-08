@@ -1,22 +1,16 @@
 #!/usr/bin/env python3
 """
-Is there really a heterozygote excess at the chromosome 6 centromere in
-Tranquillon Mtn (Strauss)? The A / Het / B groups in breakpoint_samples.tsv
-come from k-means on windowed PC1/PC2, and the middle cluster was labelled
-"Het" by assumption. Here genotypes decide.
+Genotype-based check of the heterozygote excess at the chromosome 6 centromere
+in Tranquillon Mtn (Strauss), where the "Het" PCA group of breakpoint_samples.tsv
+was assigned from k-means clusters.
 
-1. Diagnostic SNPs: in the centromeric core (REGION), SNPs whose ALT-allele
-   frequency (imputed dosage DS / 2) differs by >= MIN_DIFF between the PCA
-   A and B groups (Tranquillon Mtn plants only), oriented so the counted allele
-   is the A-group allele.
-2. Per plant (all Tranquillon Mtn plants in the imputed VCF, untrustworthy-
-   coordinate plants excluded): hybrid index = mean A-allele dosage / 2 over
-   diagnostic SNPs, and heterozygosity = fraction of diagnostic SNPs with
-   rounded dosage 1. True AB heterozygotes: index ~0.5 and high
-   heterozygosity; AA/BB: index ~1/0 and low heterozygosity.
-3. Genotype classes from the index (AA > 1 - CUT, BB < CUT, else AB), a
-   Hardy-Weinberg test (exact test, Wigginton et al. 2005), and a cross-tab
-   against the PCA groups.
+1. Diagnostic SNPs in REGION: |ALT frequency (DS / 2) in PCA group A - group B|
+   >= MIN_DIFF, oriented to count the A-group allele.
+2. Per plant (untrustworthy-coordinate plants excluded): hybrid index = mean
+   A-allele dosage / 2, and heterozygosity = fraction of diagnostic SNPs with
+   rounded dosage 1.
+3. Genotype classes (AA > 1 - CUT, BB < CUT, else AB), exact HWE test
+   (Wigginton et al. 2005), and a cross-tab against the PCA groups.
 
 Usage: centromere_hwe_check.py
 Output: OUT_TSV (per plant), OUT_FIG
@@ -31,14 +25,16 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, "/private/groups/meyerlab/esteiger/gvtp_popgen/selection/gemma")
+sys.path.insert(0, f"{BASE_DIR}/gvtp_popgen/selection/gemma")
 import temporal_null as tn
 
-VCF = "/private/groups/meyerlab/esteiger/variant_calling/angsd/postParalog_MAF_auto_GLimp_clean.vcf.gz"
-GROUPS = "/private/groups/meyerlab/esteiger/inversions/breakpoints/breakpoint_samples.tsv"
-FIELD = "/private/groups/meyerlab/esteiger/field_data.txt"
-OUT_TSV = "/private/groups/meyerlab/esteiger/inversions/centromere/centromere_hybrid_index_strauss.tsv"
-OUT_FIG = "/private/groups/meyerlab/esteiger/inversions/centromere/centromere_hybrid_index_strauss.jpg"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+VCF = f"{BASE_DIR}/variant_calling/angsd/postParalog_MAF_auto_GLimp_clean.vcf.gz"
+GROUPS = f"{BASE_DIR}/inversions/breakpoints/breakpoint_samples.tsv"
+FIELD = f"{BASE_DIR}/field_data.txt"
+OUT_TSV = f"{BASE_DIR}/inversions/centromere/centromere_hybrid_index_strauss.tsv"
+OUT_FIG = f"{BASE_DIR}/inversions/centromere/centromere_hybrid_index_strauss.jpg"
 CHROM, REGION = "DEINVI_00006", (45_500_000, 48_500_000)
 MIN_DIFF, CUT = 0.8, 0.25
 

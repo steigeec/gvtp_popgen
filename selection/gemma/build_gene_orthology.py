@@ -1,46 +1,19 @@
 #!/usr/bin/env python3
 """
-Builds the Orthologs / BLAST_Gene_Names columns for compile_gene_summary.py,
-replacing the old approach of using raw BLASTP top-hit as "Orthologs"
-(that's just sequence similarity, not orthology -- see the cylicin-2-like /
-CLPTM1 cross-kingdom false hits this produced during the gene_summary_all.tsv
-literature pass).
+Builds the Orthologs, Ortholog_Source, Acronym, Function_Description and
+BLAST_Gene_Names columns used by compile_gene_summary.py.
 
 For each gene, in priority order:
-  1. Best BLASTP hit from any Asteraceae species (ASTERACEAE_GENERA
-     allowlist, matched on exact genus -- not substring, since substring
-     matching on "aster" alone pulls in false positives like Cotoneaster
-     [Rosaceae], Verticillium dahliae [a fungus], and Acanthaster [a
-     starfish]) with evalue <= ASTERACEAE_EVALUE_MAX. Restricting to the
-     actual plant family our species belongs to, rather than either an
-     unrestricted whole-database search (which produced spurious cross-
-     kingdom hits like cylicin-2-like [mammalian sperm-specific] and a
-     literal Plasmodium falciparum locus tag) or an arbitrarily narrow
-     single-species/OrthoFinder-species-only search (which misses strong,
-     genuine hits like Cynara cardunculus/artichoke -- second only to
-     sunflower in hit volume in this database, but absent from the
-     OrthoFinder comparison, which included non-Asteraceae references like
-     Arabidopsis and tomato for annotation-curation-quality reasons, not
-     taxonomic proximity). A very strict e-value plus a real-family
-     restriction gives orthology-level confidence despite BLAST itself
-     doing no orthology inference -- the hit description text is used
-     directly (it's already human-readable). No species preference beyond
-     the e-value ranking itself: whichever qualifying Asteraceae hit scores
-     best wins, which in practice is usually (not always) sunflower.
-  2. Else, the gene's OrthoFinder (Results_Jul18) ortholog call to
-     Arabidopsis_thaliana, resolved via the local TAIR10 peptide FASTA
-     header (which embeds a curated gene_symbol + description -- no web
-     lookup needed). OrthoFinder gives real phylogenetically-inferred
-     orthology, unlike raw BLAST.
-  3. Else, the gene's own eggNOG-mapper Description/Preferred_name
-     (Di2_viridiplantae run -- taxonomy-restricted to plants, avoiding the
-     cross-kingdom false-hit problem raw whole-database BLAST has).
-  4. Else, Orthologs is empty for this gene.
+  1. Best BLASTP hit from an Asteraceae species (exact genus match to
+     ASTERACEAE_GENERA) with evalue <= ASTERACEAE_EVALUE_MAX; the hit
+     description is used directly.
+  2. Else, the OrthoFinder (Results_Jul18) Arabidopsis_thaliana ortholog,
+     with symbol and description from the TAIR10 peptide FASTA headers.
+  3. Else, the eggNOG-mapper Description/Preferred_name (Di2_viridiplantae run).
+  4. Else, Orthologs is empty.
 
-BLAST_Gene_Names is the general (unrestricted-species, no e-value filter)
-BLASTP top hit -- i.e. what "Orthologs" used to mean -- and is only written
-when steps 1-3 all come up empty, per the "only fall back to BLAST if
-Orthofinder/eggNOG found nothing" rule.
+BLAST_Gene_Names is the unrestricted BLASTP top hit, written only when
+steps 1-3 find nothing.
 
 Usage:
   python3 build_gene_orthology.py <gene_list_file> --out orthologs_<var>.txt
@@ -51,25 +24,21 @@ import re
 import sys
 from collections import defaultdict
 
-sys.path.insert(0, "/private/groups/meyerlab/esteiger/gvtp_popgen/selection/gemma")
+sys.path.insert(0, f"{BASE_DIR}/gvtp_popgen/selection/gemma")
 from curate_intergenic_by_ld import load_gff_resolver
 
-BLASTP_OUT = "/private/groups/meyerlab/esteiger/genome/remove_duplicates_rm_internalstops_longest_isoform.blastp.out"
-ORTHOFINDER_DEINANDRA_TSV = ("/private/groups/meyerlab/esteiger/genome/annotation/orthofinder_results/"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+BLASTP_OUT = f"{BASE_DIR}/genome/remove_duplicates_rm_internalstops_longest_isoform.blastp.out"
+ORTHOFINDER_DEINANDRA_TSV = (f"{BASE_DIR}/genome/annotation/orthofinder_results/"
                              "Results_Jul18/Orthologues/Deinandra.tsv")
-TAIR_PEP_FASTA = "/private/groups/meyerlab/esteiger/genome/annotation/Arabidopsis_thaliana.TAIR10.pep.all.fa"
-EGGNOG_ANNOTATIONS = "/private/groups/meyerlab/esteiger/genome/annotation/gvtp_eggnog_Di2_viridiplantae.emapper.annotations"
+TAIR_PEP_FASTA = f"{BASE_DIR}/genome/annotation/Arabidopsis_thaliana.TAIR10.pep.all.fa"
+EGGNOG_ANNOTATIONS = f"{BASE_DIR}/genome/annotation/gvtp_eggnog_Di2_viridiplantae.emapper.annotations"
 
 ASTERACEAE_EVALUE_MAX = 1e-50
 
-# Confirmed by grepping every distinct organism bracket in BLASTP_OUT and
-# checking each against known Asteraceae taxonomy -- NOT a substring match
-# (that pulls in Cotoneaster [Rosaceae], Verticillium dahliae [a fungus],
-# Circaeaster/Guyanagaster/Aztecaster/Acanthaster [unrelated genera, a
-# starfish in the last case] purely because they contain "aster"/"dahlia").
-# Deinandra's own tarweed-tribe (Madiinae) relatives (Madia, Layia,
-# Hemizonia, Holocarpha, Wyethia, Arnica, Encelia) were checked for and are
-# not present in this database.
+# Asteraceae genera present in BLASTP_OUT, matched exactly (a substring match on
+# "aster" would include e.g. Cotoneaster and Acanthaster). No Madiinae genera are in the database.
 ASTERACEAE_GENERA = {
     "Ageratina", "Ambrosia", "Archibaccharis", "Arctium", "Artemisia",
     "Aster", "Baccharis", "Bidens", "Carthamus", "Centaurea",
@@ -111,12 +80,10 @@ ORGANISM_RE = re.compile(r'\[([A-Z][a-z]+)\s')
 
 def best_asteraceae_hit(tx_hits):
     """Best (stitle, genus) from any ASTERACEAE_GENERA species clearing
-    ASTERACEAE_EVALUE_MAX, or None. Matches on the exact genus (first word
-    after '['), not a substring of the organism name -- see
-    ASTERACEAE_GENERA's docstring for why."""
+    ASTERACEAE_EVALUE_MAX, or None. Matches on the exact genus (first word after '[')."""
     for evalue, stitle in tx_hits:
         if evalue > ASTERACEAE_EVALUE_MAX:
-            break  # sorted by evalue -- nothing later can qualify either
+            break  # sorted by evalue
         m = ORGANISM_RE.search(stitle)
         if m and m.group(1) in ASTERACEAE_GENERA:
             return stitle, m.group(1)
@@ -128,20 +95,11 @@ ISOFORM_TOKEN_RE = re.compile(r'^X\d+$')
 
 
 def extract_acronym(orthologs_text):
-    """Best-effort mechanical extraction of an embedded gene symbol/locus id
-    from the Orthologs hit text itself (e.g. "...mitochondrial acidic
-    protein MAM33 [Helianthus annuus]" -> "MAM33"). Deliberately Orthologs-
-    only, never Functional_Description -- that field can come from a
-    UniProt match to an unrelated organism (confirmed: one row's
-    Functional_Description named a maize-specific symbol, "ZmCASPL5A1",
-    while its actual verified Orthologs hit was to Cynara cardunculus/
-    artichoke -- extracting from it would misattribute a different
-    species' gene symbol to this one). Requires the candidate token to
-    contain a digit, which reliably separates real symbols (MAM33, MTERF4,
-    NST1, GLO1, ALG2, At1g10780) from generic domain/family/superfamily
-    names that also happen to be all-caps (GPI, ABC, MYM, SSR, TRAFAC,
-    CASP) -- checked empirically against this dataset before adopting the
-    rule. Returns None rather than guess when nothing qualifies."""
+    """Extract a gene symbol/locus id from the Orthologs hit text
+    (e.g. "...mitochondrial acidic protein MAM33 [Helianthus annuus]" gives "MAM33").
+    Only uses the Orthologs text, since Function_Description may come from another species.
+    The token must contain a digit, to exclude all-caps family names (GPI, ABC).
+    Returns None if nothing qualifies."""
     if orthologs_text is None:
         return None
     t = re.sub(r'^[A-Z]{2}_\d+\.\d+\s*', '', orthologs_text)
@@ -193,8 +151,7 @@ def load_tair_descriptions():
             gene_id, symbol, description = m.group(2), m.group(3), m.group(4)
             if gene_id in desc:
                 continue
-            # TAIR/Ensembl repeats the AT-number as gene_symbol when no real
-            # symbol is assigned -- that's not an acronym, treat as absent.
+            # gene_symbol equal to the AT number means no symbol is assigned
             real_symbol = symbol if (symbol and symbol != gene_id) else None
             desc[gene_id] = (real_symbol, description)
     return desc
@@ -237,12 +194,8 @@ def main():
 
     n_asteraceae = n_arabidopsis = n_eggnog = n_none = n_mechanical_acronym = 0
     with open(args.out, "w") as out:
-        # Acronym/Function_Description are populated directly here (no live
-        # lookup needed) for the OrthoFinder/eggNOG tiers, since those
-        # sources already carry a curated symbol + description -- compile_
-        # gene_summary.py only needs to fall back to a UniProt query for
-        # genes where these are still NA (BLAST:<genus> tier, or no
-        # ortholog call at all).
+        # Acronym/Function_Description are filled for the OrthoFinder and eggNOG tiers;
+        # compile_gene_summary.py queries UniProt for the rest.
         out.write("Gene_ID\tOrthologs\tOrtholog_Source\tAcronym\tFunction_Description\tBLAST_Gene_Names\n")
         for gid in gene_ids:
             txs = gene2tx.get(gid, [gid])
@@ -252,9 +205,7 @@ def main():
             function_description = None
             source = "none"
 
-            # 1. Asteraceae-specific, strict-evalue BLAST hit (no curated
-            # symbol/description available -- just the raw hit description).
-            # Source label names the actual matched genus for transparency.
+            # 1. Asteraceae BLAST hit (strict e-value); source names the matched genus
             for tx in txs:
                 hit = best_asteraceae_hit(blast_hits.get(tx, []))
                 if hit:
@@ -297,10 +248,7 @@ def main():
             else:
                 n_none += 1
 
-            # Mechanical fallback: if no tier supplied a curated symbol
-            # (mainly the BLAST tier, which never carries one), try to pull
-            # one directly out of the Orthologs hit text itself -- see
-            # extract_acronym's docstring for why it's Orthologs-only.
+            # No curated symbol (mainly the BLAST tier): extract one from the Orthologs text
             if acronym is None and ortholog_text is not None:
                 acronym = extract_acronym(ortholog_text)
                 if acronym:

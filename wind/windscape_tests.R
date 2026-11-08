@@ -6,7 +6,9 @@
 ##   population and individual pairwise Fst; population nucleotide diversity;
 ##   individual heterozygosity (het.txt); env_var.txt; field_data.txt
 ## Output: BASE_DIR/wind/windscape/windscape_test_results.txt
-## R libraries: R_libs_windscape, R_libs (windscape, geosphere)
+## R libraries: windscape 2.0.0 and terra 1.9-50 (CRAN) in BASE_DIR/software/R_libs_windscape,
+##   installed with install.packages(c("windscape", "terra"), lib = <that dir>);
+##   geosphere from BASE_DIR/software/R_libs
 ## Usage: Rscript windscape_tests.R
 ##
 ## Wind distance is -ln(mean of the two directional flows), so a positive r

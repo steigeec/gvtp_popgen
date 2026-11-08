@@ -6,37 +6,19 @@ gene_summary_all.tsv, tagging each row with its source Variable.
 Column sources:
   - Gene_Name, Gene_Coordinates, Orthologs, BLAST_Gene_Names, Acronym,
     Functional_Description, Mutation_Types, Impact_Levels: from
-    gene_summary_<var>.tsv, joined on Gene_ID (the real resolved gene key
-    that script now writes -- NOT Gene_Name, which is only a display label
-    and can differ from the true id; see compile_gene_summary.py header).
-  - SNP_Count, Min_P_Value: from gene_snp_stats_<var>.tsv (built by
-    compute_gene_snp_stats.py), same Gene_ID key. Min, not mean, of the
-    linked SNPs' Bonferroni-tested p_final -- linked SNPs are often
-    correlated (especially LD-tagged intergenic ones), so a mean would
-    dilute one strong hit with several non-independent marginal ones.
+    gene_summary_<var>.tsv, joined on Gene_ID (Gene_Name is a display label only).
+  - SNP_Count, Min_P_Value: from gene_snp_stats_<var>.tsv
+    (compute_gene_snp_stats.py), joined on Gene_ID.
   - Significant_GO_Terms: "GO:ID(term); GO:ID(term)" for any FDR<0.05
-    category (goseq, unfiltered scope) that lists this gene -- read from
-    GO_enrichment_results_<var>_unfiltered_<GROUP>_goseq.tsv if present
-    (GOenrich_goseq.R only writes that file when >=1 category clears FDR).
-  - Putative_Adaptive_Role, Citation: reused from the CURRENT
-    gene_summary_all.tsv or any of its pre-*.tsv backups if a non-empty
-    value exists there for this (Variable, Gene_Coordinates) pair --
-    Gene_Coordinates, not Gene_Name, since Gene_Name's format changed with
-    the compile_gene_summary.py fix and coordinates are the stable,
-    gid-derived identity. Left as "NA" placeholder when nothing is found
-    anywhere -- meant to be backfilled by a literature pass afterward, not
-    computed here.
+    category that lists this gene, from
+    GO_enrichment_results_<var>_unfiltered_<GROUP>_goseq.tsv if present.
+  - Putative_Adaptive_Role, Citation: reused from the current
+    gene_summary_all.tsv or its pre-*.tsv backups for the same
+    (Variable, Gene_Coordinates) pair if the Acronym is unchanged;
+    otherwise "NA", to be filled from the literature.
 
-After writing the merged file, runs an independent consistency check (see
-verify_role_identity_consistency) that re-derives suspicious rows directly
-from the OUTPUT file rather than trusting the reuse-invalidation logic
-above -- a genuine safety net, not a re-statement of it, so a future bug
-in the reuse logic itself would still get caught. This is what caught the
-GIS3 bug: a role reused by (Variable, Coordinates) match alone, without
-checking whether the specific identity ("GIS3 is a transcription
-factor...") the role was written around was still the gene's current
-Acronym after the Orthologs pipeline was redesigned (raw BLAST -> Asteraceae-
-restricted BLAST / OrthoFinder / eggNOG).
+After writing, two consistency checks flag rows whose role text names a gene
+identity not supported by the row's current Orthologs/Acronym/Functional_Description.
 
 Usage: python3 build_gene_summary_all.py <var1> [<var2> ...]
 Writes gene_summary_all.tsv (backs up the existing one first).
@@ -49,7 +31,9 @@ import shutil
 import sys
 from datetime import datetime
 
-GEMMA_DIR = "/private/groups/meyerlab/esteiger/selection/gemma"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+GEMMA_DIR = f"{BASE_DIR}/selection/gemma"
 MASTER = os.path.join(GEMMA_DIR, "gene_summary_all.tsv")
 OUT_COLUMNS = [
     "Variable", "Gene_Name", "Gene_Coordinates", "Orthologs", "BLAST_Gene_Names",
@@ -102,16 +86,8 @@ def load_significant_go(var):
 def load_prior_adaptive_role():
     """(Variable, Gene_Coordinates) -> (role, citation, acronym_then), first
     non-empty hit across the current master sheet and every pre-*.tsv
-    backup. acronym_then is whatever Acronym that historical row carried at
-    the time -- the caller must check it against the CURRENT Acronym before
-    reusing role/citation, since a role narrative can be built around a
-    specific identity (e.g. "GIS3 is a transcription factor...") that a
-    later, more rigorous orthology pass no longer supports (see
-    compile_gene_summary.py's Orthologs/Acronym pipeline history -- raw
-    BLASTP top-hit was replaced with OrthoFinder/eggNOG-first specifically
-    because it produced unreliable identity calls). Coordinates alone are
-    NOT sufficient to validate reuse -- they only guarantee it's the same
-    gene, not that its identity call hasn't changed since."""
+    backup. acronym_then is the Acronym stored with that row; the caller checks
+    it against the current Acronym before reusing role/citation."""
     files = [MASTER] + sorted(glob.glob(os.path.join(GEMMA_DIR, "gene_summary_all.pre-*.tsv")))
     found = {}
     for path in files:
@@ -142,25 +118,14 @@ def load_prior_adaptive_role():
 
 
 IDENTITY_OPENER_RE = re.compile(r'^([A-Z][A-Za-z0-9]{1,9})\s+(?:is|encodes?|acts?\s+as|functions?\s+as|belongs?\s+to)\b')
-# Common English openers that satisfy IDENTITY_OPENER_RE's token shape
-# ("This is a direct ortholog of...") but aren't an asserted gene symbol.
+# Sentence openers that match IDENTITY_OPENER_RE but are not gene symbols
 NON_IDENTITY_OPENERS = {"This", "The", "It", "A", "An", "These", "That"}
 
 
 def verify_role_identity_consistency(out_rows):
-    """Independent post-hoc safety net, run on the OUTPUT rows directly --
-    does NOT trust the reuse-invalidation logic in main() (a future bug
-    there should still be caught here). Flags any row whose role text
-    opens by confidently asserting a specific identity ("GIS3 is a
-    transcription factor...", the exact pattern that caused the original
-    bug) when that identity isn't backed by the row's own current
-    Orthologs/Acronym/Functional_Description text -- i.e. the role was
-    seemingly written for a different ortholog call than the one this row
-    currently has. Hedged/family-level roles ("a related family member,
-    e.g. OsAHL1, ...") don't match the opener pattern and are left alone.
-    Prints a report; does not modify or block anything, since the pattern
-    match is a heuristic (some flags may be false positives worth a quick
-    manual look, not proof of a bug)."""
+    """Flags output rows whose role text opens by asserting a specific identity
+    ("GIS3 is a transcription factor...") not found in the row's current
+    Orthologs/Acronym/Functional_Description. Heuristic; prints a report only."""
     flagged = []
     for row in out_rows:
         role = row["Putative_Adaptive_Role"]
@@ -187,11 +152,7 @@ def verify_role_identity_consistency(out_rows):
 ROLE_TOKEN_RE = re.compile(
     r'\b([A-Z][a-z]+[A-Z][A-Za-z0-9]*|[A-Z]{2,10}[0-9]*|[A-Z][A-Za-z]*[0-9]+[A-Za-z]*)\b'
 )
-# Generic biology shorthand / method words that look like gene symbols
-# (all-caps or mixed-case tokens) but aren't an identity claim about THIS
-# gene -- excluded so the check below stays usable instead of drowning in
-# false positives from ordinary descriptive vocabulary (a real gene symbol
-# essentially never collides with these).
+# Generic abbreviations that look like gene symbols, ignored by verify_role_acronym_tokens
 ROLE_TOKEN_GENERIC = {
     "BLAST", "UNIPROT", "LOC", "GO", "ER", "PI", "PQ", "GPI", "GDI", "RAB",
     "COPII", "DNA", "RNA", "ATP", "ADP", "GTP", "ABA", "UV", "ROS", "CO2",
@@ -202,25 +163,9 @@ ROLE_TOKEN_GENERIC = {
 
 
 def verify_role_acronym_tokens(out_rows):
-    """Second, broader independent safety net alongside
-    verify_role_identity_consistency -- catches the same class of stale-
-    identity bug (a role reused via the both-Acronym-NA "no prior identity
-    claim" branch in main(), even though the role text itself names a
-    specific gene family/motif) that the narrow opener-only regex above
-    misses when the identity term isn't the very first word immediately
-    followed by is/encodes/etc (e.g. "RxLR effector proteins are..." or
-    "This STY13-like dual-specificity kinase..."). Scoped to rows with
-    Acronym == "NA": that is exactly the condition under which main()'s
-    reuse-invalidation treats "no captured symbol then" and "no captured
-    symbol now" as a match and reuses the role unconditionally, regardless
-    of whether the role text's own asserted identity still holds -- the
-    same gap that let stale RxLR/STY13/GLR identity claims survive an
-    orthology-pipeline rebuild that had already downgraded those genes to
-    "uncharacterized protein" or an unrelated ortholog call. A false
-    positive here just means an accurate role happened to use a generic
-    all-caps/mixed-case biology term not present verbatim in the current
-    Orthologs/Functional_Description text (e.g. a named ortholog used only
-    as a literature comparator) -- worth a quick look, not proof of a bug."""
+    """For rows with Acronym == "NA", flags role text whose first 20 words name
+    a gene-symbol-like token (e.g. "RxLR", "STY13") not found in the row's
+    current Orthologs/Functional_Description. Heuristic; prints a report only."""
     flagged = []
     for row in out_rows:
         role = row["Putative_Adaptive_Role"]
@@ -269,15 +214,7 @@ def main():
 
             key = (var, row["Coordinates"])
             prior = prior_roles.get(key)
-            # Only reuse if the identity the old role text was built around
-            # (its Acronym at the time) still matches -- a role can name a
-            # specific gene ("GIS3 is a transcription factor...") based on
-            # an old Orthologs/Acronym call that a later, more rigorous
-            # orthology pass no longer supports; reusing it anyway would
-            # silently keep asserting an identity the current data doesn't
-            # back. Both-NA (never had a specific identity claim) counts as
-            # a match -- that kind of role is written at the family/
-            # description level and isn't tied to one acronym.
+            # Reuse only if the stored Acronym matches the current one (both NA counts as a match)
             if prior is not None:
                 role, citation, acronym_then = prior
                 current_acronym = row["Acronym"] if row["Acronym"] != "NA" else None

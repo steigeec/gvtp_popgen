@@ -1,6 +1,7 @@
 #!/bin/bash
-# Auto-submitted by calculate_Fst_pairwisepop.sh: concatenates all per-pair
-# .stat files into the final pairwise_Fst_populations.txt table.
+# pop_collect_results.sh
+# Concatenate per-pair .stat files into pairwise_Fst_populations.txt (submitted
+# by calculate_Fst_pairwisepop.sh).
 
 #SBATCH --job-name=popFst_collect
 #SBATCH --partition=short
@@ -9,7 +10,9 @@
 #SBATCH --time=1:00:00
 #SBATCH --output=logs/collect_%j.log
 
-OUTDIR="/private/groups/meyerlab/esteiger/structure/Fst/populations/pairwise_auto"
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+OUTDIR="${BASE_DIR}/structure/Fst/populations/pairwise_auto"
 OUT="${OUTDIR}/pairwise_Fst_populations.txt"
 
 N_STAT=$(find "${OUTDIR}" -maxdepth 1 -name "*.stat" | wc -l)

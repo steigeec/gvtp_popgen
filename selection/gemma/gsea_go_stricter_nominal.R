@@ -1,22 +1,14 @@
 #!/usr/bin/env Rscript --vanilla
 
-# Selects GSEA_GO.R's raw per-term output at a stricter nominal threshold
-# than the main GSEA_GO_top_nominal_<var>.tsv track (p < 0.05, see
-# cluster_gsea_go_results.R), then applies the same rrvgo redundancy
-# reduction (per ontology, Wang similarity, threshold 0.7) that track
-# already uses. Purely a term-selection step -- visualization lives in
-# separate scripts (gsea_go_lollipop.R) that consume this file's output, so
-# the slow rrvgo step doesn't have to be re-run every time the plot changes.
+# Selects GSEA_GO.R terms at a stricter nominal threshold (raw p < p_max) than
+# cluster_gsea_go_results.R, then applies the same rrvgo redundancy reduction
+# (per ontology, Wang similarity, threshold 0.7). Output is plotted by
+# gsea_go_lollipop_3panel.R.
 #
-# No FDR-significant terms exist in this dataset (see GSEA_GO.R's own
-# printed summary) -- like cluster_gsea_go_results.R, this is a nominal/
-# hypothesis-generating selection (raw p < P_MAX), explicitly not a
-# substitute for the FDR-based result.
-#
-# Usage: Rscript gsea_go_stricter_nominal.R <var_name> [output_dir] [p_max]
+# Usage: Rscript gsea_go_stricter_nominal.R <var_name> [output_dir] [p_max] [tag]
 #   e.g. Rscript gsea_go_stricter_nominal.R fog fog 0.005
 # Expects GSEA_GO_results_<var_name>_{BP,MF,CC}.tsv (GSEA_GO.R output) in
-# output_dir (default: same directory this is run from).
+# output_dir (default: <var_name>).
 # Writes:
 #   <output_dir>/GSEA_GO_stricter_nominal_<var_name>.tsv
 
@@ -25,7 +17,7 @@ suppressMessages({
     library(rrvgo)
 })
 
-SIM_THRESHOLD <- 0.7  # same GO-redundancy clustering threshold cluster_gsea_go_results.R uses
+SIM_THRESHOLD <- 0.7  # same as cluster_gsea_go_results.R
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 1) {
@@ -34,13 +26,11 @@ if (length(args) < 1) {
 var_name   <- args[1]
 output_dir <- if (length(args) >= 2) args[2] else var_name
 P_MAX      <- if (length(args) >= 3) as.numeric(args[3]) else 0.005
-# tag must match whatever GSEA_GO.R's output_tag arg was for this run (e.g.
-# "sunflower" for the OrthoFinder/H. annuus-only annotation comparison), so
-# this reads/writes the matching tagged file set instead of the default one.
+# tag must match the output_tag used for GSEA_GO.R (e.g. "sunflower").
 tag        <- if (length(args) >= 4) args[4] else ""
 tag_suffix <- if (tag != "") paste0("_", tag) else ""
 
-# --- Load + combine all three ontologies (same pattern as cluster_gsea_go_results.R) ---
+# --- Load and combine all three ontologies ---
 all_res <- list()
 for (GROUP in c("BP", "MF", "CC")) {
     infile <- file.path(output_dir, paste0("GSEA_GO_results_", var_name, tag_suffix, "_", GROUP, ".tsv"))
@@ -59,7 +49,7 @@ combined <- do.call(rbind, all_res)
 combined <- combined[!is.na(combined$pval), ]
 print(paste0(nrow(combined), " terms loaded across ", length(all_res), " ontologies"))
 
-# --- Nominal selection at the stricter threshold, then rrvgo reduction per ontology ---
+# --- Nominal selection, then rrvgo reduction per ontology ---
 reduced_list <- list()
 n_pooled <- 0
 for (GROUP in names(all_res)) {

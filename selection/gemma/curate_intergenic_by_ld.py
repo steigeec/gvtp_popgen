@@ -1,25 +1,15 @@
 #!/usr/bin/env python3
 """
-Drop-in replacement for the
-  cut -f5 <ann.INFO> | grep -oE "MSTRG\\...." | sed "..."
-step in Launch_find_outlier_annotate.sh. Prints raw gene ID tokens to
-stdout, one per match, same format as before -- still meant to be piped
-into resolve_gene_ids.R.
+Extracts gene ID tokens from the SnpEff ANN field of an ann.INFO file
+(stdout, one per line; piped into resolve_gene_ids.R by
+Launch_find_outlier_annotate.sh).
 
-The difference: for a SNP whose ONLY snpEff annotation is
-intergenic_region (no bounded upstream_gene_variant/downstream_gene_variant,
-no genic annotation), the flanking gene(s) named by intergenic_region are
-only emitted if find_intergenic_candidate_genes.py + ld_scan_scaffold.py
-found the SNP's own position in that gene's LD-linked position set (i.e.
-some SNP inside the gene body is in measurable LD with this exact outlier
-SNP). Genic/bounded-window annotations are untouched -- extracted the same
-way as before, unconditionally.
-
-Requires ld_curation/candidate_gene_intervals.tsv and
-ld_curation/linked_positions/<scaffold>.linked.tsv to already exist (see
-find_intergenic_candidate_genes.py and launch_ld_scan.sh). If a needed
-scaffold has no linked_positions file yet, every intergenic-only call on
-that scaffold is dropped (logged to stderr) rather than silently kept.
+Genic and upstream/downstream annotations are always emitted. For a SNP
+whose only annotation is intergenic_region, the flanking gene is emitted
+only if the SNP is in LD (r2 >= --r2-threshold) with a SNP inside that gene
+body, per ld_curation/linked_positions/<scaffold>.linked.tsv
+(find_intergenic_candidate_genes.py, launch_ld_scan.sh). Intergenic-only
+calls on scaffolds without a linked_positions file are dropped.
 
 Usage:
   python3 curate_intergenic_by_ld.py <ann.INFO file> \\
@@ -30,7 +20,9 @@ import re
 import sys
 from pathlib import Path
 
-GFF = "/private/groups/meyerlab/esteiger/genome/remove_duplicates_rm_internalstops_longest_isoform.gff"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+GFF = f"{BASE_DIR}/genome/remove_duplicates_rm_internalstops_longest_isoform.gff"
 
 GENE_TOKEN_RE = re.compile(
     r"MSTRG\.[0-9]+(?:\.p?[0-9]+)?|IDmodified-gene-[0-9]+|g[0-9]+|DEINVI_[0-9]+\.[0-9]+"
@@ -138,13 +130,8 @@ def main():
 
         for s in subs:
             if s[1] != "intergenic_region":
-                # Only the Gene_ID subfield (s[4]) -- not the whole entry
-                # ("|".join(s)) -- since Feature_ID (s[6]) can carry a raw
-                # AUGUSTUS transcript stem like "g1478.t2" for a gene that
-                # was since renamed to "IDmodified-gene-N". Scanning the
-                # whole entry matches that stem as a spurious extra "g1478"
-                # gene call, which silently collides with a real, unrelated
-                # gene elsewhere in the genome that kept id "g1478".
+                # Gene_ID subfield only; Feature_ID (s[6]) can carry old AUGUSTUS
+                # stems (e.g. "g1478.t2") that match an unrelated gene g1478.
                 for tok in GENE_TOKEN_RE.findall(s[4]):
                     out.write(tok + "\n")
                 continue

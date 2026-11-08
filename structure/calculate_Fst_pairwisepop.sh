@@ -1,25 +1,24 @@
 #!/bin/bash
-# Launcher: generates pairs.txt from POPS, then submits one array task per pair
-# (150gb/9cpus each, scheduled independently instead of one big single-node job)
-# followed by a collect job as a SLURM dependency chain.
-#
-# Safe to re-run: pop_pairwise_array.sh skips any pair that already has a
-# completed .stat result, so previously-finished pairs (e.g. strauss vs
-# Dangermond) are never recomputed or overwritten.
+# calculate_Fst_pairwisepop.sh
+# Pairwise Fst between populations. Writes pairs.txt from POPS and submits
+# pop_pairwise_array.sh (one task per pair) followed by pop_collect_results.sh.
+# Safe to re-run; pairs with a completed .stat are skipped.
 #
 # Usage: bash calculate_Fst_pairwisepop.sh
 
 set -euo pipefail
 
+BASE_DIR=/private/groups/meyerlab/esteiger
+
 # === Paths ===
-export SAFDIR="/private/groups/meyerlab/esteiger/SAF/population"
-export OUTDIR="/private/groups/meyerlab/esteiger/structure/Fst/populations/pairwise_auto"
-export RS="/private/groups/meyerlab/esteiger/software/angsd_dev/misc/realSFS"
-SCRIPTS_DIR="/private/groups/meyerlab/esteiger/gvtp_popgen/structure"
+export SAFDIR="${BASE_DIR}/SAF/population"
+export OUTDIR="${BASE_DIR}/structure/Fst/populations/pairwise_auto"
+export RS="${BASE_DIR}/software/angsd_dev/misc/realSFS"
+SCRIPTS_DIR="${BASE_DIR}/gvtp_popgen/structure"
 
 mkdir -p "${OUTDIR}" "${OUTDIR}/logs"
 
-# SAF files are built by /private/groups/meyerlab/esteiger/gvtp_popgen/pop_SAF.sh
+# SAF files are built by gvtp_popgen/pop_SAF.sh
 POPS=(conception cdfw arguello strauss lionhead Dangermond)
 
 # === Generate all unique pairs (deterministic) ===
@@ -36,8 +35,6 @@ echo "$(date) -- ${N_PAIRS} pairwise comparisons"
 ARR_JID=$(sbatch \
     --job-name=popFst_pair \
     --partition=long \
-    --mail-type=FAIL \
-    --mail-user=esteiger@ucsc.edu \
     --array=1-${N_PAIRS} \
     --cpus-per-task=9 \
     --mem=150gb \
@@ -51,8 +48,6 @@ echo "Submitted pairwise array job: ${ARR_JID} (${N_PAIRS} tasks, 150gb/9cpus ea
 COL_JID=$(sbatch \
     --job-name=popFst_collect \
     --partition=short \
-    --mail-type=END,FAIL \
-    --mail-user=esteiger@ucsc.edu \
     --ntasks=1 \
     --mem=4gb \
     --time=1:00:00 \

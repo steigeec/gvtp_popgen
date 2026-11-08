@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """
 Per-peak tables and an exploratory figure for the fog peaks within
-Tranquillon Mtn (Strauss),
-using the same data, polarization and spatial units as fog_hypothesis_tests.py
-(736 plants after excluding untrustworthy-coordinate plants; stands from
-field_data.txt with stand 88 split by long-term fog cell; units < 5 plants
-dropped; favorable allele = the one whose coverage-adjusted dosage rises with
-long-term fog across all samples).
+Tranquillon Mtn (Strauss), using the same data, polarization and spatial
+units as fog_hypothesis_tests.py (736 plants after excluding
+untrustworthy-coordinate plants; stands from field_data.txt with stand 88
+split by long-term fog cell; units < 5 plants dropped; favorable allele = the
+one whose coverage-adjusted dosage rises with long-term fog across all samples).
 
-Every peak separately (frequency = mean favorable dosage / 2 over the peak's
-SNPs), as in fog_hypothesis_tests.py but per peak; plotted in
-DEINVI_0006_stacked.py (formerly the stand-alone fog_hypothesis_tests_by_peak.jpg):
+Tables, one row set per peak (frequency = mean favorable dosage / 2 over the
+peak's SNPs), plotted in DEINVI_0006_stacked.py:
   OUT_UNITS: unit frequency and unit long-term fog, with the n-weighted
      least-squares line (slope_longterm, intercept_longterm).
   OUT_YEARS: unit-adjusted frequency per germination cohort (+-95% CI, 1.96 SE
@@ -32,10 +30,12 @@ import matplotlib.pyplot as plt
 
 import temporal_null as tn
 
-G = "/private/groups/meyerlab/esteiger/selection/gemma"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+G = f"{BASE_DIR}/selection/gemma"
 OUTLIERS = f"{G}/fog/outliers_for_annot_40000_3_fog.txt"
 DOSAGE = f"{G}/fog/dosage_fog.txt"
-FIELD = "/private/groups/meyerlab/esteiger/field_data.txt"
+FIELD = f"{BASE_DIR}/field_data.txt"
 OUT_UNITS = f"{G}/fog/fog_peaks_by_unit.tsv"     # read by DEINVI_0006_stacked.py (panel H)
 OUT_YEARS = f"{G}/fog/fog_peaks_by_year.tsv"     # read by DEINVI_0006_stacked.py (panel J)
 OUT_PLANTS = f"{G}/fog/fog_chr6_plants_june_fog.jpg"

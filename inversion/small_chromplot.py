@@ -9,12 +9,14 @@ and color assignment.
 import argparse
 import sys
 
-WINPCA_DIR = '/private/groups/meyerlab/esteiger/software/winpca'
+WINPCA_DIR = f"{BASE_DIR}/software/winpca"
 sys.path.insert(0, WINPCA_DIR)
 
 from modules.data import WPCAData
 from modules.plot import Plot
 import plotly.graph_objects as go
+
+BASE_DIR = "/private/groups/meyerlab/esteiger"
 
 
 def parse_args():
@@ -60,14 +62,14 @@ def main():
         plot_fmt_lst=['png'],
     )
 
-    # LOAD & PREPARE DATA (reuse Plot's own logic)
+    # load and prepare data (reuses Plot's logic)
     plot.data_df = getattr(plot.data, plot.plot_var)
     if plot.interval:
         plot.data_df = plot.subset(plot.data_df, plot.interval)
     plot.annotate()
     plot.set_colors()
 
-    # SINGLE-PANEL FIGURE (no top variance-explained strip)
+    # single-panel figure (no variance-explained strip)
     fig = go.Figure()
 
     show_legend = not plot.numeric
@@ -95,7 +97,7 @@ def main():
             )
         )
 
-    # no legend/colorbar in the main plot -- plotted separately (--legend_out)
+    # no legend/colorbar in the main plot; plotted separately (--legend_out)
     fig.update_layout(
         template='simple_white',
         paper_bgcolor='white',

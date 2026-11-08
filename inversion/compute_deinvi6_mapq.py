@@ -1,51 +1,20 @@
 #!/usr/bin/env python3
 """
-Sliding-window "ambiguous mapping" check along DEINVI_00006: an independent,
-filter-free test of whether the fog GWAS peak (GNS1/SNF1, ~49.03-49.15 Mb)
-could be a collapsed-paralog/mismapping artifact, since it's centromere-
-adjacent (centromere: 45.0-48.5 Mb) and extra scrutiny is warranted there.
+Sliding-window mapping-quality check along DEINVI_00006, testing whether the
+fog GWAS peak (GNS1/SNF1, ~49.03-49.15 Mb) shows signs of ambiguous mapping.
 
-Why not just reuse the paralog-filtered VCF's depth (as an earlier version
-of this analysis did, in DEINVI_0006_coverage_windows.tsv.gz / panel D of
-chr6_synteny_panels.py -- removed 2026-10-23, per user decision, since it
-wasn't actually useful for this question): that VCF's sites already passed
-a paralog/mismapping filter BEFORE this depth could be computed, so a truly
-mismapped region would just lose sites there, not show elevated depth among
-the sites that survive -- the check was circular for exactly the question
-being asked here.
-
-This instead computes two filter-INDEPENDENT depth tracks directly from the
-merged BAMs for all 339 all-locality samples (the same sample set used in
-chr6_synteny_panels.py's PC1/heterozygosity panels), summed across samples,
-on the same 10kb grid:
-  total_depth    -- samtools depth -Q 0  (every read, any mapping quality)
-  highqual_depth -- samtools depth -Q 20 (only MAPQ >= 20 reads)
-  frac_lowmapq   = 1 - highqual_depth / total_depth
-A region where reads pile up ambiguously (e.g. a collapsed duplication) will
-show elevated frac_lowmapq, since multi-mapping reads get MAPQ ~0 regardless
-of local depth -- this is the standard signature checked for this purpose,
-and the earlier (removed) coverage-only check couldn't have caught it even
-in principle.
-
-Parallelized across N_CHUNKS scaffold chunks per depth pass (matches the
-approach benchmarked for the earlier BAM-based coverage computation, ~45 min
-single-threaded for one pass across all 339 BAMs x 70.5 Mb); two passes here
-(-Q 0 and -Q 20) roughly double that.
-
-Statistical test (2026-10-23, per user decision -- this isn't going in a
-figure, so the comparison needs to be a real test, not an eyeballed panel):
-a one-sided Mann-Whitney U test of frac_lowmapq in the peak's windows against
-all other genome-wide windows (centromere windows also excluded from the
-background, so a globally elevated centromere can't itself drive the
-result). One-sided, alternative="greater", since the only direction that
-would actually support a mismapping concern is the peak showing HIGHER
-ambiguous-mapping than background -- testing both directions here would just
-be diluting a pre-specified, directional question.
+From the merged BAMs of the 339 all-locality samples, summed across samples on
+a 10 kb grid:
+  total_depth     samtools depth -Q 0
+  highqual_depth  samtools depth -Q 20
+  frac_lowmapq    1 - highqual_depth / total_depth
+Test: one-sided Mann-Whitney U (peak > background) of frac_lowmapq, with peak
+and centromere windows excluded from the background. Runs in N_CHUNKS
+parallel chunks per depth pass.
 
 Usage: compute_deinvi6_mapq.py
-Output: OUT (pos, total_depth, highqual_depth, frac_lowmapq), tab-separated,
-        gzip-compressed; TEST_OUT (the Mann-Whitney result, plain text, for
-        the archive); both also printed to stdout.
+Output: OUT (pos, total_depth, highqual_depth, frac_lowmapq; tsv.gz),
+        TEST_OUT (test result); both also printed to stdout.
 """
 from concurrent.futures import ThreadPoolExecutor
 import subprocess
@@ -53,11 +22,13 @@ import subprocess
 import pandas as pd
 from scipy.stats import mannwhitneyu
 
-BAM_DIR = "/private/groups/meyerlab/esteiger/mapping/merged"
-PC1 = "/private/groups/meyerlab/esteiger/inversions/all_localities/DEINVI_00006_GL_maf5_flipped.pc_1.tsv.gz"
-FAI = "/private/groups/meyerlab/esteiger/inversions/filtered_scaffolds.fai"
-OUT = "/private/groups/meyerlab/esteiger/inversions/all_localities/DEINVI_00006_mapq_windows.tsv.gz"
-TEST_OUT = "/private/groups/meyerlab/esteiger/inversions/all_localities/DEINVI_00006_mapq_peak_test.txt"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+BAM_DIR = f"{BASE_DIR}/mapping/merged"
+PC1 = f"{BASE_DIR}/inversions/all_localities/DEINVI_00006_GL_maf5_flipped.pc_1.tsv.gz"
+FAI = f"{BASE_DIR}/inversions/filtered_scaffolds.fai"
+OUT = f"{BASE_DIR}/inversions/all_localities/DEINVI_00006_mapq_windows.tsv.gz"
+TEST_OUT = f"{BASE_DIR}/inversions/all_localities/DEINVI_00006_mapq_peak_test.txt"
 CHROM = "DEINVI_00006"
 WIN = 10_000
 N_CHUNKS = 16
@@ -101,9 +72,7 @@ def summarize(df, lo, hi, label):
 
 
 def test_peak_vs_background(df):
-    """One-sided Mann-Whitney U: is the peak's frac_lowmapq GREATER than background?
-    Background excludes both the peak and the centromere, so an elevated
-    centromere baseline can't inflate the comparison either way."""
+    """One-sided Mann-Whitney U of peak vs. background frac_lowmapq (background excludes peak and centromere)."""
     in_peak = (df["pos"] >= PEAK[0]) & (df["pos"] <= PEAK[1])
     in_cen = (df["pos"] >= CENTROMERE[0]) & (df["pos"] <= CENTROMERE[1])
     peak_vals = df.loc[in_peak, "frac_lowmapq"].dropna()
@@ -124,10 +93,7 @@ def test_peak_vs_background(df):
 def main():
     import os
     if os.path.exists(OUT):
-        # Re-running just to redo the statistical test (e.g. after editing it)
-        # shouldn't repeat the ~15-20 min BAM computation -- load the window
-        # data straight from disk if it's already there. Delete OUT first to
-        # force a genuine recompute (e.g. if the BAMs or sample list changed).
+        # delete OUT to force recomputing depth from the BAMs
         print(f"{OUT} already exists -- loading it rather than recomputing depth", flush=True)
         df = pd.read_csv(OUT, sep="\t")
     else:

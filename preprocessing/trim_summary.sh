@@ -1,4 +1,7 @@
 #!/bin/bash
+# Read counts before and after trimming, fraction retained, and mean trimmed
+# read length for one sample; prints one tab-separated row.
+# Usage: trim_summary.sh <R1_clean.fastq.gz> <dir_name>
 
 file1=$1
 dir_name=$2
@@ -9,11 +12,9 @@ file3=${file1//R1/S}
 suffix="_R1_clean.fastq.gz"
 name=${file1%"$suffix"}
 
-# fix the suffix
+# matching raw fastq files
 R1raw=${file1//_R1_clean/_R1_001}
-# add the filepath
 R1raw="/redser5/raw/Meyer_GVTP_reseq/${R1raw}"
-# Now for R2
 R2raw=${R1raw//R1/R2}
 
 R1raw=$(awk '{s++} END {print s/4}' "$R1raw")

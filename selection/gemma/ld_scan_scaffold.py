@@ -1,22 +1,14 @@
 #!/usr/bin/env python3
 """
 For one scaffold, streams its ngsLD pairwise output (DEINVI_XXXXX_prune.ld.gz,
-columns: site1 site2 dist r2_ExpG D Dp r2, all pairs within 300kb -- see
-ngsLD.sh) exactly once and records, for each candidate gene on that scaffold,
+columns: site1 site2 dist r2_ExpG D Dp r2; pairs within 300 kb, see
+ngsLD.sh) once and records, for each candidate gene on that scaffold,
 every position with r2 >= --r2-threshold to at least one SNP inside that
 gene's body (start/end from candidate_gene_intervals.tsv, produced by
-find_intergenic_candidate_genes.py).
+find_intergenic_candidate_genes.py). Output is used by curate_intergenic_by_ld.py.
 
-This is deliberately decoupled from any specific outlier SNP or phenotype:
-it answers "what positions does this gene's LD block actually reach", once,
-genome-wide over the candidate set. curate_intergenic_by_ld.py then just
-checks set membership per outlier SNP at pipeline time -- no rescanning.
-
-Gene bodies are assumed non-overlapping on a given scaffold (true for this
-GFF: longest-isoform-deduplicated AUGUSTUS/transdecoder models), so a
-bisect over sorted start positions is used for containment instead of a
-per-line linear scan -- required for speed, since the largest scaffold
-files run to hundreds of millions of lines.
+Gene bodies are assumed non-overlapping on a scaffold (true for this GFF),
+so containment is found by bisect over sorted start positions.
 
 Usage:
   python3 ld_scan_scaffold.py --scaffold DEINVI_00021 \\

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Assemble the CENH3 coding sequences used by cenh3_dnds.py into
+Collect the CENH3 coding sequences used by cenh3_dnds.py into
 OUT_DIR/cenh3_cds_raw.fa (one sequence per entry, stop codon removed).
 
 Sources (all stored in CDS_DIR; see cenh3_dnds.py's header for how each CENH3
@@ -35,9 +35,11 @@ import gzip
 
 from Bio.Seq import Seq
 
-OUT_DIR = "/private/groups/meyerlab/esteiger/inversions/centromere/cenh3_dnds"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+OUT_DIR = f"{BASE_DIR}/inversions/centromere/cenh3_dnds"
 CDS_DIR = f"{OUT_DIR}/cds"
-DEIN_CDS = "/private/groups/meyerlab/esteiger/genome/remove_duplicates_rm_internalstops_longest_isoform.cds"
+DEIN_CDS = f"{BASE_DIR}/genome/remove_duplicates_rm_internalstops_longest_isoform.cds"
 
 
 def read(path, keep=lambda h: True):

@@ -1,108 +1,79 @@
 #!/usr/bin/env Rscript
 # =============================================================================
-# roh_plot.R — Summarise ROHan output and plot ROH by population
+# roh_plot.R: summarise ROHan output and plot ROH by population
 #
-# Adapted from the original bcftools-roh version of this script (same name,
-# formerly at diversity/ROH/roh_plot.R) to run on ROHan's output instead.
-# Structure and plots mirror the original as closely as possible so the two
-# are visually comparable; output files are all "rohan_"-prefixed so they
-# never collide with the original bcftools-based jpgs still in diversity/ROH/.
+# Only samples present in rohan_summary_stats.txt (ROHan completed) are
+# zero-imputed when they have no ROH segments.
 #
-# ROHan has completed for all 423 samples (see gvtp_popgen/diversity/ROHan/launch_rohan.sh).
-# Unlike the original script (where a sample's absence from roh_regions.txt
-# legitimately means "zero ROH found"), the completed-sample set is read from
-# rohan_summary_stats.txt (one row per sample ROHan has finished) rather than
-# from field_data.txt, and only THOSE samples get zero-imputed when they have
-# no ROH segments. Sample counts are printed throughout for reference.
+# Input:  rohan_regions.txt, rohan_summary_stats.txt, rohan_roh_burden_by_threshold.txt
+#         (all from collect_rohan.sh)
+#         BASE_DIR/diversity/ROH/roh_regions.txt   (bcftools roh)
+#         BASE_DIR/field_data.txt
+#         BASE_DIR/env_var.txt
 #
-# Input:  rohan_regions.txt        (produced by collect_rohan.sh)
-#         rohan_summary_stats.txt  (produced by collect_rohan.sh)
-#         /private/groups/meyerlab/esteiger/diversity/ROH/roh_regions.txt   (old, bcftools roh)
-#         /private/groups/meyerlab/esteiger/field_data.txt
-#         /private/groups/meyerlab/esteiger/env_var.txt
-#
-# Output (each produced for BOTH metrics: {total_ROH, prop_long} — see
-# Y_METRICS below; "prop_long" = proportion of the GENOME in long (>1Mb)
-# ROH, an F_ROH-style fraction isolating recent inbreeding, not to be
-# confused with "proportion of an individual's ROH burden that is long"):
+# Output (for both metrics in Y_METRICS: total_ROH and prop_long, the proportion
+# of the genome in ROH >1 Mb):
 #         rohan_{total_ROH,prop_long}_by_cluster_{2,4}x.jpg
 #         rohan_{total_ROH,prop_long}_by_cluster_4x_lat.jpg
-#         rohan_{total_ROH,prop_long}_vs_coverage.jpg    (coverage confound check)
+#         rohan_{total_ROH,prop_long}_vs_coverage.jpg
 #         rohan_{total_ROH,prop_long}_vs_{BCM_30y,BCM_germ_yr,fog_30y,fog_germ_yr,BIO18,BIO18_germ_yr}_{individuals,strauss}.jpg
-#         rohan_total_ROH_strauss_by_year.jpg  (Tranquillon Mtn, 2020/2021/2022, single panel;
-#                                                styled to match inbreeding_violin_by_year.jpg)
-#         rohan_prop_long_strauss_by_year.jpg  (same, but 3-panel: warm-qtr precip / fog /
-#                                                prop_long_ROH, all by year, same individuals,
-#                                                skinny-tall panels via patchwork)
-#         rohan_{total_ROH,prop_long}_bars_Strauss.jpg    (Tranquillon Mtn by stand/OHANA_order;
-#                                                            styled to match inbreeding_bars_Strauss.jpg)
-#         rohan_vs_bcftools_total_ROH_comparison.jpg      (old vs new, total ROH only)
+#         rohan_total_ROH_strauss_by_year.jpg
+#         rohan_prop_long_strauss_by_year.jpg
+#         rohan_{total_ROH,prop_long}_bars_Strauss.jpg
+#         rohan_vs_bcftools_total_ROH_comparison.jpg
 #
-# Showing both metrics everywhere is temporary while we're still deciding
-# which one (or both) to use going forward.
+# R library: BASE_DIR/software/R_libs
 # =============================================================================
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs")
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
+
+.libPaths(file.path(BASE_DIR, "software/R_libs"))
 library(ggplot2)
 library(ggbeeswarm)
 library(patchwork)
 library(dunn.test)
 
-setwd("/private/groups/meyerlab/esteiger/diversity/ROH/ROHan")
+setwd(file.path(BASE_DIR, "diversity/ROH/ROHan"))
 
-OLD_ROH_REGIONS <- "/private/groups/meyerlab/esteiger/diversity/ROH/roh_regions.txt"
+OLD_ROH_REGIONS <- file.path(BASE_DIR, "diversity/ROH/roh_regions.txt")
 
 # ==============================================================================
 # 1. Metadata
 # ==============================================================================
-field <- read.table("/private/groups/meyerlab/esteiger/field_data.txt",
+field <- read.table(file.path(BASE_DIR, "field_data.txt"),
                     header = TRUE, sep = "\t")
 field$SampleID <- as.character(field$SampleID)
 
-env <- read.table("/private/groups/meyerlab/esteiger/env_var.txt",
+env <- read.table(file.path(BASE_DIR, "env_var.txt"),
                   header = TRUE, sep = "\t")
 env$SampleID <- as.character(env$SampleID)
 fog_by_sample <- env[, c("SampleID", "fog")]
 
-# The ROHan-eligible cohort (>3x coverage, prep_samples.sh) is 423 samples —
-# NOT all 842 in field_data.txt, most of which are below the coverage cutoff
-# and were never candidates for ROH analysis at all. This is the correct
-# denominator for "how much of the run is done" progress reporting below.
+# ROHan-eligible cohort (>3x coverage, see prep_samples.sh)
 n_eligible <- nrow(read.table("samples_gt3x.tsv", header = FALSE, sep = "\t"))
 
-# Genome size (autosomal scaffolds >=1Mb, same set ROHan's --auto restricts
-# to) — needed to express long-ROH burden as a proportion of the genome
-# (F_ROH-style, using only long tracts), analogous to how total_ROH_Mb is
-# reported as absolute Mb.
-FAI <- "/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked.fai"
+# Genome size over autosomal scaffolds >=1 Mb (the set ROHan's --auto uses)
+FAI <- file.path(BASE_DIR, "genome/DEINVI_genome.fasta.masked.fai")
 fai <- read.table(FAI, header = FALSE, sep = "\t",
                   col.names = c("scaffold", "length", "offset", "linebases", "linewidth"))
 scaffolds_1mb <- read.table("scaffolds_1mb_names.txt", header = FALSE, sep = "\t")$V1
 GENOME_SIZE_BP <- sum(fai$length[fai$scaffold %in% scaffolds_1mb])
 
-# 1 Mb ~ 50 generations at ~1 cM/Mb (standard assumption without a linkage
-# map) — the literature-standard cutoff for "recent inbreeding" (Ceballos et
-# al. 2018; the wild/non-model-species convention in Kardos et al. and the
-# Taylor et al. low-coverage ROH paper this pipeline's rohmu calibration
-# already follows). NOT a smaller data-driven cutoff — see prior discussion.
+# 1 Mb ~ 50 generations at ~1 cM/Mb (assumed without a linkage map), the
+# standard cutoff for recent inbreeding (Ceballos et al. 2018; Kardos et al.;
+# Taylor et al. low-coverage ROH paper, whose rohmu calibration this pipeline follows).
 LONG_THRESH_BP <- 1e6
 LONG_THRESH_LABEL <- sprintf("%g kb", LONG_THRESH_BP / 1e3)
 
 # ==============================================================================
-# 2. Load ROHan (new) ROH regions + the set of samples ROHan has FINISHED
-#    rohan_regions.txt columns (header, produced by collect_rohan.sh):
-#    Sample | Chrom | Begin | End | ROH_length_bp | Validated_sites
-#    Source: .mid.hmmrohl.gz files (HMM run with the point-estimate theta —
-#    ROHan's actual best guess; .min/.max use the theta credible interval's
-#    lower/upper bounds instead and are collected separately, see section 13)
+# 2. Load ROHan ROH regions (.mid.hmmrohl.gz, point-estimate theta) and the
+#    set of completed samples
 # ==============================================================================
 roh <- read.table("rohan_regions.txt", header = TRUE, sep = "\t")
 roh$Sample <- as.character(roh$Sample)
 roh$Length_bp <- roh$ROH_length_bp
 
-# rohan_summary_stats.txt has exactly one row per sample ROHan has completed
-# (whether or not it had any ROH) — this, not field_data.txt, is the correct
-# "completed" set for zero-imputation.
+# One row per completed sample, with or without ROH
 rohan_done <- read.table("rohan_summary_stats.txt", header = TRUE, sep = "\t")
 rohan_done$Sample <- as.character(rohan_done$Sample)
 completed_samples <- data.frame(SampleID = rohan_done$Sample)
@@ -113,8 +84,7 @@ cat(sprintf("ROH segments loaded: %d across %d samples (of the completed set)\n"
             nrow(roh), length(unique(roh$Sample))))
 
 # ==============================================================================
-# 3. Per-individual summary (new / ROHan) — zero-impute only within the
-#    completed set, NOT the full 423-sample cohort
+# 3. Per-individual summary; zero-impute only within the completed set
 # ==============================================================================
 roh_summary <- do.call(rbind, lapply(split(roh, roh$Sample), function(d) {
   data.frame(
@@ -131,14 +101,11 @@ roh_summary <- merge(completed_samples, roh_summary, by = "SampleID", all.x = TR
 roh_summary[is.na(roh_summary$n_ROH), c("n_ROH", "total_ROH_Mb", "long_ROH_Mb",
                                           "mean_ROH_kb", "median_ROH_kb")] <- 0
 
-# Proportion of the GENOME (not of total ROH) that's in long ROH — an
-# F_ROH-style fraction computed using only long tracts, directly comparable
-# in spirit to total_ROH_Mb but isolating the recent-inbreeding signal.
+# Proportion of the genome (not of total ROH) in long ROH
 roh_summary$prop_genome_long_ROH <- roh_summary$long_ROH_Mb * 1e6 / GENOME_SIZE_BP
 
 # ==============================================================================
-# 4. Merge with metadata (Cov for per-plot filtering, Year for the Strauss plot,
-#    OHANA_order for the by-stand plot matching inbreeding_bars_Strauss.jpg)
+# 4. Merge with metadata
 # ==============================================================================
 roh_summary <- merge(roh_summary, field[, c("SampleID", "Clusters", "Cov", "Lat", "Year", "OHANA_order")],
                      by = "SampleID", all.x = TRUE)
@@ -164,7 +131,7 @@ print(aggregate(total_ROH_Mb ~ Clusters, data = roh_summary,
                                           IQR = IQR(x), n = length(x)), 2)))
 
 # ==============================================================================
-# 6. Plotting params (match roh_plot.R / inbreeding_plot.R style)
+# 6. Plotting params
 # ==============================================================================
 gvtp_theme <- theme_bw() +
   theme(
@@ -201,9 +168,7 @@ popcolors <- c(
   "Dangermond"       = "#56b4e9"
 )
 
-# Per-stand (OHANA_order) palette, copied verbatim from inbreeding_plot.R so
-# the by-stand plot below is directly visually comparable to
-# inbreeding_bars_Strauss.jpg.
+# Per-stand (OHANA_order) palette, same as inbreeding_plot.R
 clustercolors <- c(
   "72" = "#EE8866",
   "73" = "#99DDFF", "74" = "#99DDFF",
@@ -215,11 +180,6 @@ clustercolors <- c(
 OHANA_LEVELS <- c("72", "73", "74", "75", "78", "79", "80", "81", "82", "83",
                   "85", "86", "87", "89", "88", "90", "91", "392", "486")
 
-# Both metrics are shown in every plot below, for now (total ROH: cumulative
-# autozygosity across all time depths; proportion of genome in long ROH:
-# isolates the recent-inbreeding signal specifically — see the >1Mb/50-
-# generation note above). Once the analysis direction is settled, most
-# plots below will likely drop to just one of these two.
 Y_METRICS <- list(
   list(var = "total_ROH_Mb", lab = "Total ROH length (Mb)", tag = "total_ROH"),
   list(var = "prop_genome_long_ROH",
@@ -228,8 +188,7 @@ Y_METRICS <- list(
 )
 
 # ==============================================================================
-# 7. Plot: ROH burden per individual — one plot per coverage threshold,
-#    per metric (total ROH and proportion of genome in long ROH)
+# 7. ROH burden per individual, per coverage threshold and metric
 # ==============================================================================
 for (m in Y_METRICS) {
   for (cov_thresh in c(2, 4)) {
@@ -256,19 +215,10 @@ for (m in Y_METRICS) {
 }
 
 # ==============================================================================
-# 8. Coverage confound check — does ROH burden track sequencing depth rather
-#    than biology? Two possible failure modes: low coverage could UNDER-call
-#    ROH (less power to detect true homozygous stretches) or OVER-call it
-#    (allele dropout at low depth creates false-homozygous sites that look
-#    like ROH). Either way, if a metric just tracks coverage, it isn't
-#    trustworthy as an inbreeding signal. Checked for both metrics.
-#
-#    Uses AnalysisCov = min(raw Cov, 6), NOT raw Cov — prep_samples.sh
-#    downsamples anything above 6x down to exactly 6x, so that's the actual
-#    depth ROHan saw. Plotting against raw Cov would scatter many different
-#    original depths (all downsampled to the same 6x) across the x-axis for
-#    no reason; AnalysisCov is what could actually drive a detection-power
-#    confound.
+# 8. Coverage confound check: low coverage could under-call ROH (less power)
+#    or over-call it (allele dropout creating false homozygous sites).
+#    Uses AnalysisCov = min(Cov, 6) since prep_samples.sh downsamples
+#    anything above 6x to 6x, so that is the depth ROHan actually saw.
 # ==============================================================================
 roh_summary$AnalysisCov <- pmin(roh_summary$Cov, 6)
 dat_cov <- roh_summary[!is.na(roh_summary$AnalysisCov), ]
@@ -305,7 +255,7 @@ for (m in Y_METRICS) {
 }
 
 # ==============================================================================
-# 9. ROH burden — alternative x-axis ordered by latitude (4x only), per metric
+# 9. ROH burden with clusters ordered by latitude (4x only), per metric
 # ==============================================================================
 lat_cluster <- aggregate(Lat ~ Clusters,
                          data = roh_summary[!is.na(roh_summary$Lat), ],
@@ -400,14 +350,9 @@ for (m in Y_METRICS) {
 }
 
 # ==============================================================================
-# 11. Old (bcftools roh) vs New (ROHan) comparison
-#     Only meaningful for samples ROHan has actually completed.
-#     Not expecting the same absolute scale: different underlying models
-#     (bcftools roh from called genotypes vs ROHan directly from BAM
-#     genotype likelihoods). rohan_regions.txt now uses ROHan's mid
-#     (point-estimate) threshold, its best single guess rather than a bound.
-#     What's worth checking here is whether the two broadly agree on WHICH
-#     samples/clusters carry relatively more or less ROH, not the magnitude.
+# 11. bcftools roh vs ROHan comparison (completed ROHan samples only)
+#     Absolute scales differ (called genotypes vs BAM genotype likelihoods);
+#     the check is whether they agree on which samples/clusters carry more ROH.
 # ==============================================================================
 old_roh <- read.table(OLD_ROH_REGIONS, header = FALSE, sep = "\t",
                       col.names = c("tag", "Sample", "Chrom", "Start", "End",
@@ -424,8 +369,6 @@ new_summary <- roh_summary[, c("SampleID", "n_ROH", "total_ROH_Mb", "Clusters", 
 names(new_summary)[names(new_summary) == "n_ROH"] <- "new_n_ROH"
 names(new_summary)[names(new_summary) == "total_ROH_Mb"] <- "new_total_ROH_Mb"
 
-# Inner join, restricted to the completed-ROHan set — this is the whole point:
-# comparing only where we actually have both numbers.
 comparison <- merge(new_summary, old_summary, by = "SampleID")
 
 cat(sprintf("\n*** Old (bcftools roh) vs New (ROHan) comparison, n=%d completed samples ***\n",
@@ -461,14 +404,7 @@ dev.off()
 cat("Comparison plot written to rohan_vs_bcftools_total_ROH_comparison.jpg\n")
 
 # ==============================================================================
-# 12. Tranquillon Mtn (Strauss) ROH by year — 2020 / 2021 / 2022
-#     ROHan (new) results only
-#     Styled to match inbreeding_violin_by_year.jpg (inbreeding_plot.R) exactly:
-#     plain gray80 boxplot (no per-year color, no jitter overlay), same
-#     dimensions, same gvtp_theme + y-axis-title hjust tweak, no title/subtitle
-#     clutter — so this is directly visually comparable to that plot.
-#     (total_ROH only here — prop_long gets the 3-panel climate-context
-#     version in section 12c below, per request.)
+# 12. Tranquillon Mtn (Strauss) total ROH by year, 2020 / 2021 / 2022
 # ==============================================================================
 strauss <- roh_summary[roh_summary$Clusters == "Strauss" & !is.na(roh_summary$Year), ]
 strauss <- strauss[strauss$Year %in% c(2020, 2021, 2022), ]
@@ -496,16 +432,9 @@ if (nrow(strauss) >= 1) {
 }
 
 # ==============================================================================
-# 12c. Two-panel version for prop_long_ROH: BIO12 (water-year precip.) and
-#      prop_long_ROH, both by year, same Strauss individuals, same
-#      box-and-whisker style. Skinny/tall panels combined via patchwork,
-#      following the multi-panel pattern in inbreeding_plot.R
-#      (soilmoist_inbreeding_by_year_Strauss.jpg).
-#
-#      Uses BIO12_germ_yr (germination-year-specific value), NOT the 30-year
-#      climate normal (BIO12) — the normal is fixed per location and
-#      wouldn't show any real signal across sampling years; only the
-#      germ-yr version actually varies year to year.
+# 12c. Strauss prop_long_ROH and BIO12_germ_yr by year (two panels)
+#      Uses BIO12_germ_yr, not the 30-year normal, which is fixed per
+#      location and does not vary across sampling years.
 # ==============================================================================
 strauss_clim <- merge(strauss, env[, c("SampleID", "BIO12_germ_yr")],
                       by = "SampleID", all.x = TRUE)
@@ -513,11 +442,9 @@ strauss_clim <- merge(strauss, env[, c("SampleID", "BIO12_germ_yr")],
 cat(sprintf("\n*** Strauss 2-panel climate-context plot, n=%d completed samples ***\n",
             nrow(strauss_clim)))
 
-# --- Statistical test: prop_genome_long_ROH ~ Year (Strauss) -----------------
-# Kruskal-Wallis (non-parametric, matches inbreeding_plot.R's kw_strauss_year
-# approach for NGSF ~ Year) since ROH proportions aren't expected to be
-# normally distributed. Dunn test with Bonferroni correction for pairwise
-# year comparisons if the omnibus test suggests it's worth following up.
+# --- Kruskal-Wallis prop_genome_long_ROH ~ Year (Strauss), Dunn post hoc ----
+# Non-parametric, as ROH proportions are not expected to be normal; Dunn test
+# with Bonferroni correction for pairwise years.
 if (nrow(strauss_clim) >= 3 && length(unique(strauss_clim$Year)) >= 2) {
   cat("\nMedian prop_genome_long_ROH by year (Strauss):\n")
   print(tapply(strauss_clim$prop_genome_long_ROH, strauss_clim$Year, median))
@@ -530,9 +457,7 @@ if (nrow(strauss_clim) >= 3 && length(unique(strauss_clim$Year)) >= 2) {
   dunn_prop_long <- dunn.test(strauss_clim$prop_genome_long_ROH, strauss_clim$Year,
                               method = "bonferroni")
 
-  # --- Drought-year contrast: 2021 (extreme drought, lowest BIO12_germ_yr)
-  # vs. 2020+2022 combined (non-drought) — Wilcoxon rank-sum, matching the
-  # binary drought-vs-non-drought contrast used for NGSF in inbreeding_plot.R.
+  # --- 2021 (drought) vs 2020+2022: Wilcoxon rank-sum
   strauss_clim$drought_group <- ifelse(strauss_clim$Year == "2021",
                                        "drought_2021", "non_drought_2020_2022")
   cat("\n=== Wilcoxon rank sum: Strauss prop_genome_long_ROH, 2021 (drought) vs 2020+2022 (non-drought) ===\n")
@@ -544,13 +469,7 @@ if (nrow(strauss_clim) >= 3 && length(unique(strauss_clim$Year)) >= 2) {
 }
 
 if (nrow(strauss_clim) >= 1) {
-  # CANVAS IS NOW FIXED at 4500x2400 (matching the very first sizing request)
-  # and will NOT be rescaled again when these values change — scaling the
-  # canvas in lockstep with font/linewidth (as earlier revisions did) makes
-  # every version look identical at any given viewing size, since it's a
-  # pure proportional scale-up. Growing these values against a fixed canvas
-  # is what actually makes them bigger relative to the plot.
-  # panel border linewidth 8, box/whisker linewidth 8, font size 160.
+  # Fixed 4500x2400 canvas; font size and linewidths set relative to it
   big_panel_theme <- year_panel_theme +
     theme(text = element_text(size = 160),
           panel.border = element_rect(colour = "black", fill = NA, linewidth = 8))
@@ -576,9 +495,6 @@ if (nrow(strauss_clim) >= 1) {
 
 # ==============================================================================
 # 12b. Tranquillon Mtn (Strauss) ROH by stand (OHANA_order)
-#      Styled to match inbreeding_bars_Strauss.jpg exactly: boxplot per stand,
-#      filled with the same clustercolors palette, x-axis labels hidden (too
-#      many stands to label legibly), same gvtp_theme.
 # ==============================================================================
 strauss_stand <- roh_summary[roh_summary$Clusters == "Strauss" & !is.na(roh_summary$OHANA_order), ]
 strauss_stand$OHANA_order <- factor(as.character(strauss_stand$OHANA_order), levels = OHANA_LEVELS)
@@ -610,20 +526,11 @@ if (nrow(strauss_stand) >= 1) {
 
 # ==============================================================================
 # 13. Per-individual mid estimate with min/max spread
-#     rohan_roh_burden_by_threshold.txt (from collect_rohan.sh) has, per
-#     sample, total ROH Mb computed three ways: mid (point estimate, the bar),
-#     max (theta upper bound -> conservative/fewer ROH -> a LOWER total), and
-#     min (theta lower bound -> lenient/more ROH -> a HIGHER total).
-#
-#     IMPORTANT: the min-based (lenient) value is frequently extreme — in the
-#     current data it reaches >500 Mb (out of a 1339 Mb genome) for 25 of 56
-#     samples, i.e. it's calling nearly the WHOLE GENOME as ROH. This lines up
-#     with ROHan's own FAQ, which says these interval bounds tend to run
-#     inflated. Don't read the upper whisker in plot (a) as a tight
-#     statistical bound — it's better read as "how extreme the estimate gets
-#     under an implausibly low background-heterozygosity assumption." Plot
-#     (b) below, using only the (much more reasonable) max-based lower bound,
-#     is likely the more practically useful of the two.
+#     From rohan_roh_burden_by_threshold.txt: mid (point estimate), max (theta
+#     upper bound, lower total) and min (theta lower bound, higher total).
+#     The min-based totals are often extreme (>500 Mb of a 1339 Mb genome for
+#     25 of 56 samples), consistent with ROHan's FAQ noting these bounds run
+#     inflated. Plot (b), using only the max-based bound, is the more useful one.
 # ==============================================================================
 burden <- read.table("rohan_roh_burden_by_threshold.txt", header = TRUE, sep = "\t")
 burden$Sample <- as.character(burden$Sample)
@@ -636,8 +543,7 @@ cat(sprintf("\n*** Per-individual mid/min/max ROH spread, n=%d completed samples
 cat(sprintf("Samples where the lenient (min) estimate exceeds 500 Mb (>37%% of the genome): %d of %d\n",
             sum(burden$Total_ROH_Mb_min > 500), nrow(burden)))
 
-# --- (a) Full spread: mid bar, whisker from max (conservative) to min (lenient) —
-#     pseudo-log y-axis, since values span ~4 orders of magnitude (0 to >1000 Mb)
+# --- (a) Mid bar, whisker from max to min; pseudo-log y-axis
 n_facet_cols <- min(3, length(unique(burden$Clusters)))
 jpeg("rohan_individual_spread_full.jpg",
      units = "in", height = 3 + 2.5 * ceiling(length(unique(burden$Clusters)) / n_facet_cols),
@@ -661,8 +567,7 @@ print(
 dev.off()
 cat("Plot written to rohan_individual_spread_full.jpg\n")
 
-# --- (b) Conservative-only range: mid bar, whisker down to max (conservative) —
-#     linear scale; both values stay in a comparable, interpretable range
+# --- (b) Mid bar, whisker down to max; linear y-axis
 jpeg("rohan_individual_spread_conservative.jpg",
      units = "in", height = 3 + 2.5 * ceiling(length(unique(burden$Clusters)) / n_facet_cols),
      width = 12, res = 300)

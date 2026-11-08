@@ -99,7 +99,7 @@ SAF_JID=$(sbatch --array=1-${N_SAF} --export=ALL --output="${OUTDIR}/logs/saf_%A
 PAIR_JID=$(sbatch --array=1-${N_PAIR} --export=ALL --dependency=afterok:${SAF_JID} \
   --output="${OUTDIR}/logs/pair_%A_%a.log" "${SCRIPTS_DIR}/fst_downsample_pair.sh" | awk '{print $NF}')
 COL_JID=$(sbatch --job-name=fstds_collect --partition=short --ntasks=1 --mem=2gb --time=0:30:00 \
-  --mail-type=END,FAIL --mail-user=esteiger@ucsc.edu --dependency=afterok:${PAIR_JID} \
+  --dependency=afterok:${PAIR_JID} \
   --output="${OUTDIR}/logs/collect_%j.log" \
   --wrap="{ printf 'pop1\tpop2\treplicate\tFst_unweighted\tFst_weighted\n'; cat ${OUTDIR}/pairs/*.stat; } > ${OUTDIR}/pairwise_Fst_downsampled.txt" \
   | awk '{print $NF}')

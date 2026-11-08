@@ -1,35 +1,25 @@
 #!/bin/bash
-# =============================================================================
-# collect_rohan.sh — Concatenate ROHan ROH segment files into rohan_regions.txt
+# collect_rohan.sh
+# Concatenate per-sample ROHan output into summary tables. Run after all
+# rohan_phase1.sh/rohan_phase2.sh tasks have finished.
 #
-# ROHan's pass 1 (MCMC) doesn't produce a single heterozygosity (theta)
-# estimate — it produces a credible interval (point estimate + lower/upper
-# bounds; see the "thetamid thetamin thetamax" triplet in each .summary.txt).
-# Pass 2 (HMM) is then run three separate times, once per bound, each writing
-# its own ROH call file:
-#   .mid.hmmrohl.gz  — HMM run with the POINT ESTIMATE of theta (best guess)
-#   .min.hmmrohl.gz  — HMM run with the LOWER bound of theta -> more windows
-#                      look "significantly below background" -> MORE ROH calls
-#   .max.hmmrohl.gz  — HMM run with the UPPER bound of theta -> fewer windows
-#                      look unusual by comparison -> FEWER ROH calls
-# These are not posterior-probability confidence thresholds on the ROH calls
-# themselves; the min/max spread reflects uncertainty in the background
-# heterozygosity estimate (itself driven mostly by per-sample data volume),
-# and ROHan's own README/FAQ notes these bounds tend to run inflated (they're
-# computed from the second derivative of a likelihood that's often flat near
-# 0). So .mid is used as the primary/canonical call set below; .min/.max are
-# additionally collected per-sample (total Mb only, not full segment lists)
-# so downstream plots can show the mid estimate with a min/max spread.
-#
-# Per-segment columns: ROH_ID, CHROM, BEGIN, END, ROH_LENGTH, VALIDATED_SITES
+# ROHan pass 1 (MCMC) gives theta as a point estimate with lower/upper bounds
+# (thetamid thetamin thetamax in each .summary.txt), and pass 2 (HMM) was run
+# once per value:
+#   .mid.hmmrohl.gz   theta point estimate
+#   .min.hmmrohl.gz   lower bound of theta, so more windows fall below
+#                     background and more ROH are called
+#   .max.hmmrohl.gz   upper bound of theta, so fewer ROH are called
+# The spread reflects uncertainty in background heterozygosity (mostly driven
+# by data volume per sample), not confidence in the ROH calls, and the ROHan
+# README notes these bounds tend to be inflated. .mid is used as the primary
+# call set; .min/.max are kept only as per-sample totals for spread plots.
 # Samples with no ROH contain the literal string "none found".
 #
-# Run this once launch_rohan.sh reports no samples remaining (all
-# rohan_phase1.sh/rohan_phase2.sh array tasks have completed).
-# Output: rohan_regions.txt                    (mid-threshold segments, input for roh_plot.R)
-#         rohan_summary_stats.txt              (theta estimates, % genome in ROH per individual)
-#         rohan_roh_burden_by_threshold.txt    (per-sample total ROH Mb at mid/min/max, for spread plots)
-# =============================================================================
+# Outputs (in OUTDIR):
+#   rohan_regions.txt                   mid-theta segments, input for roh_plot.R
+#   rohan_summary_stats.txt             theta estimates and % genome in ROH
+#   rohan_roh_burden_by_threshold.txt   total ROH Mb per sample at mid/min/max
 
 #SBATCH --job-name=ROHan_collect
 #SBATCH --partition=short
@@ -41,7 +31,9 @@
 
 set -euo pipefail
 
-OUTDIR=/private/groups/meyerlab/esteiger/diversity/ROH/ROHan
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+OUTDIR=${BASE_DIR}/diversity/ROH/ROHan
 
 # --- Collect ROH segments (mid / point-estimate threshold) -------------------
 echo "Collecting ROH segments (mid / point-estimate threshold) ..."
@@ -62,8 +54,7 @@ for rohl in "$OUTDIR"/*.mid.hmmrohl.gz; do
         continue
     fi
 
-    # File has header line (#ROH_ID CHROM BEGIN END ROH_LENGTH VALIDATED_SITES)
-    # Skip header, prepend sample name
+# Skip the header line (#ROH_ID CHROM BEGIN END ROH_LENGTH VALIDATED_SITES)
     echo "$content" \
         | awk -v s="$sample" 'NR>1 {OFS="\t"; print s, $2, $3, $4, $5, $6}' \
         >> "$OUTDIR/rohan_regions.txt"
@@ -73,16 +64,11 @@ done
 n_segs_raw=$(( $(wc -l < "$OUTDIR/rohan_regions.txt") - 1 ))
 echo "ROH segments (raw): $n_segs_raw across $n_with_roh samples ($n_no_roh samples had no ROH)"
 
-# --- Merge near-adjacent segments (same sample+scaffold, gap <= 1 window) ----
-# ROHan's own HMM output already merges truly-contiguous windows, but a single
-# spurious window flipping out of the ROH state (e.g. one noisy heterozygous
-# call) can fragment what's otherwise one real run into two reported segments
-# separated by exactly one 100kb (--size) window. Merging across a 1-window
-# gap is a conservative fix for that specific artifact — it barely changes
-# the overall length distribution (checked empirically: ~2% fewer segments)
-# but avoids undercounting genuinely-contiguous long runs. NOT intended to
-# paper over genuine short separate ROH — anything wider than 1 window is
-# left alone.
+# --- Merge segments separated by at most one 100 kb window --------------------
+# ROHan already merges contiguous windows, but one noisy window dropping out of
+# the ROH state can split a run into two segments separated by exactly one
+# --size window. Merging across a 1-window gap fixes that (~2% fewer segments);
+# anything wider is left alone.
 MERGE_GAP_TOL_BP=100000
 python3 - "$OUTDIR/rohan_regions.txt" "$MERGE_GAP_TOL_BP" << 'PYEOF'
 import sys

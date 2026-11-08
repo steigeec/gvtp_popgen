@@ -1,7 +1,14 @@
 #!/usr/bin/env Rscript
+# Plot ngsF inbreeding coefficients by locality and year, correct for coverage,
+# and model inbreeding against fog, climate and Ne at site and individual level.
+# Input: ngsF_results.txt (working directory), field_data.txt, env_var.txt, eDNA env data.
+# Output: plots (.jpg) and inbreeding_analysis_report.md.
+# R library: BASE_DIR/software/R_libs
 
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs")
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
+
+.libPaths(file.path(BASE_DIR, "software/R_libs"))
 
 
 library(ggplot2)
@@ -19,13 +26,13 @@ library(vegan)
 
 
 
-# ESTABLISH PLOTTING PARAMS
+# ---------- Plotting params ----------
 
 
 gvtp_theme <- theme_bw() + 
   theme(
-    text = element_text(size = 70), # Sets size for all text elements
-    axis.text = element_text(angle = 45, hjust=1), # Only specify unique modifications
+    text = element_text(size = 70),
+    axis.text = element_text(angle = 45, hjust=1),
     plot.margin = unit(c(1, 1, 1, 1), "cm"),
     legend.key.height = unit(1, "cm"),
     legend.key.width = unit(1.5, "cm"),
@@ -54,18 +61,7 @@ location_labels <- c(
 
 
 
-# Rebuilt 2026-10-21 (per user decision) from field_data.txt directly, after
-# samples were reassigned to a revised set of Strauss/Tranquillon Mtn
-# stands. inbmed (post coverage-filter, all years) now only ever has 9
-# distinct Strauss OHANA_order values: 72,73,75,78,80,85,87,88,89
-# (confirmed empirically, not assumed) — the other 10 stands from the old
-# 19-stand set (74,79,81,82,83,86,90,91,392,486) no longer appear at all.
-# Per user decision, each surviving stand KEEPS its original color
-# (just dropping the entries for stands that no longer exist), rather
-# than reassigning fresh colors.
-# Re-adjusted 2026-10-22 per user decision: 72/73/75/78 keep their
-# original colors; 80 moves from yellow to grey (joining 85); 87 and 89
-# move from grey to the darker blue (joining 88).
+# Colors for the Strauss stands present after coverage filtering
 clustercolors <- c(
   "72" = "#EE8866",
   "73" = "#99DDFF",
@@ -84,7 +80,7 @@ LABELS<-c("Strauss" = "Strauss", "Between" = "Between", "Point_Conception" = "Po
 
 inbreeding <- read.table("ngsF_results.txt", header=T)
 inbreeding$SampleID<-gsub("_rmdup.bam", "", inbreeding$BAM)
-pop<-read.table("/private/groups/meyerlab/esteiger/field_data.txt", header=T, sep="\t")
+pop<-read.table(file.path(BASE_DIR, "field_data.txt"), header=T, sep="\t")
 pop$SampleID<-as.character(pop$SampleID)
 inbreeding<-merge(inbreeding, pop, by="SampleID")
 inbreeding$log<-log10(inbreeding$Cov)
@@ -113,17 +109,14 @@ inbreeding$log<-log10(inbreeding$Cov)
 }
 
 
-# We decide to remove individual 4531, which has neary twice the heterozygosity of the next-highest individual in the dataset
-# 	this individual has high coverage (nearly 29x), so that's not the issue
-#	it is potentially impacted by contamination of sample mixing. 
+# Exclude 4531: nearly twice the heterozygosity of the next-highest individual.
+# Its coverage is high (~29x), so this is likely contamination or sample mixing.
 inbreeding<-inbreeding[!(inbreeding$Sample %in% c("4531")),]
 
 
-# add shapefile for 
-# Define the cropping extent
+# Cropping extent
 crop_extent <- st_bbox(c(xmin = -120.7, xmax = -120.1, ymin = 34.4, ymax = 34.9), crs = st_crs(proj))
-# crop the coast off
-CA<-st_read("/private/groups/meyerlab/esteiger/env/study_area/GVTP_clip.shp")
+CA<-st_read(file.path(BASE_DIR, "env/study_area/GVTP_clip.shp"))
 CA<-st_make_valid(CA)
 crop_extent_sf <- st_as_sfc(st_bbox(crop_extent))
 CA <- st_crop(CA, crop_extent)
@@ -139,12 +132,12 @@ scale_color_manual(values=popcolors) +
 gvtp_theme
 dev.off()
 
-# Just filter out samples below reliable coverage
+# Drop samples below reliable coverage
 inbmed <- inbreeding[inbreeding$log > 0.85, ]
 inbmed$Year<-as.factor(inbmed$Year)
 inbmed$Clusters<-factor(inbmed$Clusters, levels=c("VAFB_Lion_Head", "VAFB_Arguello", "Dangermond", "Point_Conception", "Strauss", "CDFW"))
 
-# Coverage correction model — residuals used downstream for site-level analyses
+# Coverage correction; residuals used downstream
 mod_cov         <- lm(NGSF ~ log10(Cov), data = inbmed)
 cat("Coverage correction model:\n"); print(summary(mod_cov))
 inbmed$residual <- residuals(mod_cov)
@@ -161,7 +154,7 @@ gvtp_theme
 dev.off()
 
 
-# INBREEDING AS BOXPLOY BY LOCATION WITH CORRECTION
+# Corrected inbreeding by locality
 jpeg("inbreeding_boxplot_by_location.jpg", height=1200, width=800)
 ggplot(inbmed[inbmed$Year=="2020",], aes(x=Clusters, y=residual))+
 geom_boxplot(col="black", aes(fill=Clusters), outlier.shape = NA) +
@@ -175,7 +168,7 @@ axis.title.x=element_blank())
 dev.off()
 
 
-# FOR PUBLICATION VERSION, WITH CORRECTION
+# Publication version, coverage-corrected
 jpeg("inbreeding_boxplot_by_location_forPub.jpg", height=1200, width=1000)
 ggplot(inbmed[inbmed$Year=="2020",], aes(x=Clusters, y=residual))+
 geom_boxplot(col="black", aes(fill=Clusters),  outlier.size = 4, lwd = 1.5) +
@@ -184,7 +177,6 @@ labs(y="Residual inbreeding coef.")+
 gvtp_theme + 
 theme(
 axis.text.x=element_blank(),
-#axis.text = element_text(vjust=0, hjust=1), 
 axis.title.x=element_blank())
 dev.off()
 
@@ -193,7 +185,7 @@ dev.off()
 
 
 
-# boxplots of inbreeding for each year
+# Inbreeding by year
 jpeg("inbreeding_violin_by_year.jpg", height=1100, width=1100)
 ggplot(data=inbmed[inbmed$Clusters=="Strauss",],) +
   geom_boxplot(aes(x = Year, y =residual), fill = "gray80", color = "black", outlier.size=5, linewidth=2) +
@@ -260,14 +252,14 @@ aggregate(NGSF ~ Clusters, data = inbmed,
 # Does repeated drought drive inbreeding?
 
 
-env<-read.table("/private/groups/meyerlab/esteiger/env_var.txt", header=T, sep="\t")
+env<-read.table(file.path(BASE_DIR, "env_var.txt"), header=T, sep="\t")
 inbmed$SampleID <- trimws(as.character(inbmed$SampleID))
 env$SampleID    <- trimws(as.character(env$SampleID))
 env<-merge(inbmed, env, by="SampleID")
 env<-env[env$Year.x=="2020",]
 
 # Also merge eDNA environmental data (many additional env variables per sample)
-edna_env <- read.csv("/private/groups/meyerlab/esteiger/eDNA_env_data.csv", header=TRUE)
+edna_env <- read.csv(file.path(BASE_DIR, "eDNA_env_data.csv"), header=TRUE)
 edna_env$SampleID <- trimws(as.character(edna_env$SampleID))
 env <- merge(env, edna_env, by="SampleID", suffixes=c("", "_edna"))
 
@@ -298,8 +290,6 @@ mod <- lm(NGSF ~ fog + Cov.x + Clusters, data = env)
 summary(mod)
 
 # ---- Site-level scatterplots: env variable vs. inbreeding, controlling for Ne ----
-# (fog and BCM_30y get their own dedicated added-variable plots further below;
-#  this covers the remaining site_env candidates using the same added-variable approach)
 site_env_controlNe <- function(var, xlab, outfile) {
   e_inb <- residuals(lm(residual        ~ Ne, data = site_env))
   e_var <- residuals(lm(site_env[[var]] ~ Ne, data = site_env))
@@ -326,8 +316,7 @@ site_env_controlNe("terraclimate_soil_moisture_mm_30y",              "Soil moist
 # ==============================================================================
 # SITE-LEVEL ANALYSIS: FOG AND Ne AS PREDICTORS OF INBREEDING
 # ==============================================================================
-# env has per-individual rows filtered to Year 2020 and good coordinates.
-# residual column (coverage-corrected NGSF) comes through from inbmed via merge.
+# env: per-individual rows, Year 2020 with good coordinates; residual is coverage-corrected NGSF
 
 lat_col_inb   <- if ("Lat" %in% names(env)) "Lat" else "Lat.x"
 site_full_inb <- aggregate(cbind(residual, fog) ~ Clusters, data = env, FUN = mean)
@@ -336,7 +325,6 @@ site_lat_inb  <- aggregate(env[[lat_col_inb]] ~ env$Clusters, FUN = mean)
 names(site_lat_inb) <- c("Clusters", "Lat")
 site_full_inb <- merge(site_full_inb, site_lat_inb, by = "Clusters")
 
-# Ne_vals already defined above (used for site_env$Ne)
 site_full_inb$Ne <- Ne_vals[as.character(site_full_inb$Clusters)]
 site_bcm_inb$Ne  <- Ne_vals[as.character(site_bcm_inb$Clusters)]
 
@@ -380,7 +368,7 @@ print(summary(mod_inb_both))
 cat("\n=== AIC comparison (lower = better fit) ===\n")
 print(AIC(mod_inb_fog, mod_inb_Ne, mod_inb_both))
 
-# ---- Variance partitioning: fog vs. Ne -> inbreeding ------------------------
+# ---- Variance partitioning of inbreeding: fog vs. Ne ------------------------
 vp_inb <- varpart(site_full_inb$residual, ~ fog, ~ Ne, data = site_full_inb)
 cat("\n=== Variance partitioning: fog vs. Ne -> inbreeding residual ===\n")
 print(vp_inb)
@@ -392,7 +380,7 @@ plot(vp_inb, digits = 2, Xnames = c("Fog", "Ne"),
 dev.off()
 cat("Variance partitioning plot written to varpart_inb_fog_Ne.jpg\n")
 
-# ---- Added-variable plot: fog -> inbreeding, controlling for Ne --------------
+# ---- Added-variable plot: inbreeding vs fog, controlling for Ne --------------
 e_inb_Ne     <- residuals(lm(residual ~ Ne, data = site_full_inb))
 e_fog_Ne_inb <- residuals(lm(fog      ~ Ne, data = site_full_inb))
 
@@ -417,7 +405,7 @@ dev.off()
 cat("Added-variable plot written to added_variable_inb_fog_controlNe.jpg\n")
 
 
-# ---- Variance partitioning: BCM (CWD) vs. Ne -> inbreeding ------------------
+# ---- Variance partitioning of inbreeding: BCM (CWD) vs. Ne ------------------
 vp_inb_bcm <- varpart(site_bcm_inb$residual, ~ BCM_30y, ~ Ne, data = site_bcm_inb)
 cat("\n=== Variance partitioning: BCM CWD vs. Ne -> inbreeding residual ===\n")
 print(vp_inb_bcm)
@@ -429,7 +417,7 @@ plot(vp_inb_bcm, digits = 2, Xnames = c("CWD", "Ne"),
 dev.off()
 cat("Variance partitioning plot written to varpart_inb_BCM_Ne.jpg\n")
 
-# ---- Added-variable plot: BCM (CWD) -> inbreeding, controlling for Ne -------
+# ---- Added-variable plot: inbreeding vs BCM (CWD), controlling for Ne -------
 e_inb_Ne     <- residuals(lm(residual ~ Ne, data = site_bcm_inb))
 e_bcm_Ne_inb <- residuals(lm(BCM_30y  ~ Ne, data = site_bcm_inb))
 
@@ -494,7 +482,7 @@ plot(vp_inb_BIO18, digits = 2, Xnames = c("Precip\n(warmest qtr.)", "Ne"),
 dev.off()
 cat("Variance partitioning plot written to varpart_inb_BIO18_Ne.jpg\n")
 
-# ---- Added-variable plot: BIO18 -> inbreeding, controlling for Ne -------
+# ---- Added-variable plot: inbreeding vs BIO18, controlling for Ne -------
 e_inb_Ne_BIO18 <- residuals(lm(residual ~ Ne,    data = site_full_inb))
 e_BIO18_Ne     <- residuals(lm(BIO18    ~ Ne,    data = site_full_inb))
 
@@ -521,33 +509,13 @@ cat("Added-variable plot written to added_variable_inb_BIO18_controlNe.jpg\n")
 # ==============================================================================
 # SITE-LEVEL MODEL COMPARISON: fog + BIO18 (precip, warmest qtr.) + Ne
 # ------------------------------------------------------------------------------
-# Ne is kept as an ordinary fixed-effect covariate, not a random effect: a
-# random effect needs a grouping factor with multiple observations per level
-# to estimate a variance component, but at the site level (n=6) every
-# cluster/site has exactly one row and one Ne value -- there's no within-group
-# replication, and Ne is a continuous covariate here, not a grouping factor at
-# all. Fitting it as a random-effect grouping term would be uninterpretable
-# (and, in an individual-level model, would just be aliased with a per-cluster
-# random intercept, since Ne varies only at the cluster level).
-#
-# With only 6 site-level observations we also can't fit every possible
-# interaction: the full fog*BIO18*Ne three-way model has 8 parameters, more
-# than there are data points, and is rank-deficient, so it's excluded below.
-# We fit the rest -- all three single terms, all three additive pairs, the
-# full additive triple, and all three pairwise interactions -- and rank them
-# by AICc rather than plain AIC, since AIC is known to be biased toward
-# complex models once parameter count approaches sample size.
-#
-# AICc's own small-sample correction term is undefined once a model's
-# coefficient count gets too close to n=6: every 4-coefficient model below
-# (the additive triple, and all three pairwise interactions) comes back as
-# AICc = Inf. That isn't a bug -- it's AICc correctly refusing to rank models
-# we don't have the degrees of freedom to support. The 3-coefficient additive
-# pairs do return a finite AICc, but it's already 24-33 points worse than the
-# best single-predictor model -- nowhere close to competitive. In practice,
-# only the three single-predictor models (fog, BIO18, Ne) are worth comparing
-# at this sample size; everything else is included in the table for
-# completeness but should not be used to declare a "best" multi-predictor model.
+# Ne is a fixed-effect covariate, not a random effect: at n=6 each site has one
+# row and one Ne value, so there is no within-group replication.
+# The full fog*BIO18*Ne model (8 parameters) is rank-deficient at n=6 and is
+# excluded. Models are ranked by AICc rather than AIC given the small n.
+# 4-coefficient models return AICc = Inf (too few df), and the additive pairs
+# are 24-33 AICc worse than the best single predictor, so only the three
+# single-predictor models are meaningfully comparable.
 # ==============================================================================
 
 site_models <- list(
@@ -582,8 +550,8 @@ print(summary(site_models[[best_site_model_name]]))
 
 
 # ==============================================================================
-# SITE-LEVEL ANALYSIS: fog_germ_yr + BIO12_germ_yr + Ne -> inbreeding
-# Cluster means (2020), Ne values from Ne_vals defined above
+# SITE-LEVEL ANALYSIS: fog_germ_yr + BIO12_germ_yr + Ne vs inbreeding
+# Cluster means (2020)
 # ==============================================================================
 
 site_fogprecip <- env %>%
@@ -643,10 +611,7 @@ site_fogprecip_controlNe("BIO12_germ_yr", "Annual precipitation (mm)", "added_va
 env10 <- env[!is.na(env$Cov.x) & env$Cov.x > 20, ]
 cat(sprintf("\n>20x env dataset: %d individuals (Year 2020)\n", nrow(env10)))
 
-# NOTE: env variable vs. inbreeding relationships are only shown at site-level scale
-# (see the site_env / site_full_inb / site_bcm_inb / site_fogprecip added-variable plots
-# above). Strauss is the exception: it has enough individuals sampled across years to
-# support individual-level plots, so those are kept below.
+# Env vs inbreeding at individual level for Strauss only (enough individuals across years)
 
 # Strauss-only scatter: BCM_30y vs inbreeding
 jpeg("inb_vs_BCM_30y_strauss.jpg", units = "in", height = 5, width = 5, res = 300)
@@ -719,19 +684,10 @@ cat("Strauss scatter written to inb_vs_BIO18_strauss.jpg\n")
 # STRAUSS-ONLY MODEL COMPARISON: BIO18 + fog + BIO15 predicting residual F
 # ------------------------------------------------------------------------------
 # Individual-level (n=57, >20x coverage, 2020 only), restricted to Strauss.
-# 2020-only, like the site-level analyses above: we checked whether Year needs
-# to be controlled for here (random-intercept models across all 3 years), and
-# found Year's variance component was estimated at exactly 0 -- singular fit,
-# even in a bare intercept-only model with no predictors at all. There's no
-# detectable between-year variation in Strauss's residual F to control for, so
-# there's no need to bring in the other years or a random effect; plain
-# 2020-only fixed-effect lm() is appropriate.
-#
-# With n=57 there's plenty of residual df even for the fully saturated 3-way
-# interaction model (8 parameters), so we fit the full candidate set: all
-# three single terms, all three additive pairs, the additive triple, all three
-# pairwise-interaction models, the all-pairwise-interactions model (no 3-way),
-# and the fully saturated model. Ranked by AICc.
+# 2020 only: a Year random intercept across all 3 years was estimated at 0
+# (singular fit, even intercept-only), so plain lm() on 2020 is used.
+# With n=57 there are enough residual df for the full candidate set, including
+# the saturated 3-way interaction model; ranked by AICc.
 # ==============================================================================
 
 strauss10 <- env10[env10$Clusters == "Strauss", ]
@@ -772,14 +728,13 @@ print(summary(strauss_models[[best_strauss_model_name]]))
 
 # ==============================================================================
 # INDIVIDUAL-LEVEL COMPETING GLMs: residual ~ [env_var] + Clusters
-# Candidate env predictors swapped in one at a time; all models fit on the
-# intersection of complete cases so AIC values are directly comparable.
+# All models fit on the same complete cases so AIC values are comparable.
 # Uses all sampling years (2020-2022); Clusters absorbs spatial structure.
 # ==============================================================================
 
-env_var_all <- read.table("/private/groups/meyerlab/esteiger/env_var.txt", header = T, sep = "\t")
+env_var_all <- read.table(file.path(BASE_DIR, "env_var.txt"), header = T, sep = "\t")
 env_var_all$SampleID <- trimws(as.character(env_var_all$SampleID))
-edna_env_glm <- read.csv("/private/groups/meyerlab/esteiger/eDNA_env_data.csv", header = TRUE)
+edna_env_glm <- read.csv(file.path(BASE_DIR, "eDNA_env_data.csv"), header = TRUE)
 edna_env_glm$SampleID <- trimws(as.character(edna_env_glm$SampleID))
 
 inb_all_env <- merge(inbmed, env_var_all, by = "SampleID")
@@ -833,22 +788,11 @@ mod_ind_glm <- glm_fits[["fog_germ_yr"]]
 inb_all_env <- inb_glm
 cat("\nAIC (fog_germ_yr model):", AIC(mod_ind_glm), "\n")
 
-# NOTE: individual-level env-vs-inbreeding plot removed here (all clusters combined);
-# fog vs. inbreeding, controlling for Ne, is shown at site-level scale further above
-# (added_variable_inb_foggerm_controlNe.jpg).
 
 # ==============================================================================
-# INDIVIDUAL-LEVEL BETA GLM + PER-CLUSTER FOG PLOT
-# Equivalent to het_vs_fog_individuals_bycluster.jpg in het_plot.R
-#
-# Family: beta_family(link = "logit")
-# Rationale: NGSF (inbreeding coefficient) is bounded strictly in [0, 1],
-# making the Gaussian assumption of lm inappropriate (residuals are not
-# symmetric and variance is not constant near the boundaries). The beta
-# distribution is the natural choice for a continuous proportion response.
-# The logit link maps the linear predictor from (-Inf, Inf) onto (0, 1),
-# matching the support of the beta distribution and providing an
-# interpretable log-odds scale for the predictors.
+# INDIVIDUAL-LEVEL BETA GLM AND PER-CLUSTER FOG SLOPES
+# Beta family, logit link: NGSF is bounded in [0, 1], so Gaussian residuals
+# would be asymmetric and heteroscedastic near the boundaries.
 # ==============================================================================
 
 n_inb <- nrow(inb_all_env)
@@ -879,9 +823,6 @@ sig_clusters_inb <- names(fog_slope_pvals_inb)[
 cat("Significant clusters (p < 0.05):",
     if (length(sig_clusters_inb)) paste(sig_clusters_inb, collapse = ", ") else "none", "\n")
 
-# NOTE: individual-level per-cluster fog plot removed here (all clusters combined,
-# non-Strauss individuals included); the per-cluster slope p-values above are still
-# computed and reported.
 
 
 # ==============================================================================
@@ -889,7 +830,7 @@ cat("Significant clusters (p < 0.05):",
 # ==============================================================================
 
 # Build Strauss-only multi-year dataset with soil moisture
-strauss_env_raw <- read.table("/private/groups/meyerlab/esteiger/env_var.txt", header=T, sep="\t")
+strauss_env_raw <- read.table(file.path(BASE_DIR, "env_var.txt"), header=T, sep="\t")
 strauss_env_raw$SampleID <- trimws(as.character(strauss_env_raw$SampleID))
 
 strauss_all <- inbmed[inbmed$Clusters == "Strauss", ]

@@ -1,36 +1,19 @@
 #!/usr/bin/env python3
 """
-Is the chr 6 fog peak's Tajima's D unusually low for its genomic setting?
-(A test of the meiotic-drive interpretation: a driven haplotype sweeping
-through populations should leave lower Tajima's D than comparable regions,
-in every population.)
+Compare Tajima's D at the chr 6 fog peak with centromere-matched and genome-wide
+random blocks, per population.
 
-Peak statistic: per population, median Tajima's D of the 100-site windows
-(4x_<pop>.Diana.out, as in plot_TajD_extreme_combined.R) overlapping the chr 6
-peak (PEAK; 19 retained fog SNPs, GNS1/SNF1).
-Centromere-matched null: N_BLOCKS random blocks of the same span placed
-outside the centromere call but within the same distance band from the
-centromere edge as the peak (temporal_null.cen_band of the peak's distance:
-0-1.59 Mb), on scaffolds with a confident centromere call
-(call_centromeres.py), excluding DEINVI_00006 and +-EXCLUDE_FLANK around
-every fog outlier peak; blocks with < MIN_WINDOWS windows dropped. The same
-block positions are used in every population.
-Genome-wide null: the same number of random blocks anywhere on those
-scaffolds (same exclusions), to show how much is explained by centromere
-proximity alone.
-Context: every other fog peak's median Tajima's D (windows overlapping its
-SNP span), per population.
-One-sided p (drive predicts lower): fraction of null blocks with median
-Tajima's D <= the peak's.
+Peak statistic: median Tajima's D of the 100-site windows (4x_<pop>.Diana.out)
+overlapping PEAK. Centromere-matched null: N_BLOCKS random blocks of the same
+span at the same distance band from a centromere edge (tn.cen_band), on
+scaffolds with a confident centromere call, excluding DEINVI_00006 and
++-EXCLUDE_FLANK around every fog outlier peak; blocks with < MIN_WINDOWS
+windows dropped. Genome-wide null: random blocks anywhere on those scaffolds.
+Other fog peaks are shown for context. One-sided p = fraction of null blocks
+with median Tajima's D <= the peak's.
 
-Figure (OUT_FIG): each locus sits next to its appropriate null -- the other
-fog peaks (mostly on chromosome arms) beside the genome-wide random blocks,
-the chr 6 peak beside the centromere-matched blocks.
-OUT_FIG_KDE: per population, a smoothed (Gaussian KDE) frequency distribution
-of all genome-wide 100-site window Tajima's D values, with each fog peak's
-median Tajima's D as a point below it (chr 6 = diamond). Note the scale
-difference: a peak value is a median over many windows, so it is less
-dispersed than single windows.
+Figures: OUT_FIG (boxplots of both nulls with peaks), OUT_FIG_KDE (per
+population, KDE of all window Tajima's D with each fog peak's median below).
 
 Usage: tajd_centromere_matched.py
 Output: OUT_FIG, OUT_FIG_KDE, OUT_TSV
@@ -45,15 +28,17 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from scipy.stats import gaussian_kde
 
-sys.path.insert(0, "/private/groups/meyerlab/esteiger/gvtp_popgen/selection/gemma")
+sys.path.insert(0, f"{BASE_DIR}/gvtp_popgen/selection/gemma")
 import temporal_null as tn
 
-TAJD_DIR = "/private/groups/meyerlab/esteiger/selection/TajD"
-GEMMA = "/private/groups/meyerlab/esteiger/selection/gemma"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+TAJD_DIR = f"{BASE_DIR}/selection/TajD"
+GEMMA = f"{BASE_DIR}/selection/gemma"
 OUTLIERS = f"{GEMMA}/fog/outliers_for_annot_40000_3_fog.txt"
-OUT_FIG = "/private/groups/meyerlab/esteiger/inversions/centromere/TajD_centromere_matched.jpg"
-OUT_FIG_KDE = "/private/groups/meyerlab/esteiger/inversions/centromere/TajD_genome_kde_fog_peaks.jpg"
-OUT_TSV = "/private/groups/meyerlab/esteiger/inversions/centromere/TajD_centromere_matched.tsv"
+OUT_FIG = f"{BASE_DIR}/inversions/centromere/TajD_centromere_matched.jpg"
+OUT_FIG_KDE = f"{BASE_DIR}/inversions/centromere/TajD_genome_kde_fog_peaks.jpg"
+OUT_TSV = f"{BASE_DIR}/inversions/centromere/TajD_centromere_matched.tsv"
 POP_COLOR = {"Tranquillon Mtn": "#009e73", "Gaviota": "#e69f00", "Pt. Conception": "#0072b2",
              "Lion's Head": "#f0e442", "Pt. Arguello": "#d55e00"}
 KDE_SAMPLE, OTHER_ALPHA = 50_000, 0.45
@@ -176,7 +161,6 @@ def main():
     ax.set_ylabel("Tajima's D (block median)", fontsize=LABEL_SIZE)
     ax.tick_params(axis="y", labelsize=TICK_SIZE)
     ax.spines[["top", "right"]].set_visible(False)
-    # legend to the right of the axes
     ax.legend([bp1["boxes"][0], bp2["boxes"][0], h_other, h_peak],
               ["random blocks,\ngenome-wide", "random blocks,\ncentromere-matched", "other fog peaks", "chr 6 fog peak"],
               frameon=False, fontsize=TICK_SIZE - 3, loc="center left", bbox_to_anchor=(1.01, 0.5), labelspacing=1.0)

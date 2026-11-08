@@ -3,26 +3,29 @@
 #SBATCH --nodes=1
 #SBATCH --time=168:00:00
 
+# Tajima's D in 100-SNP windows for one population (ANGSD, realSFS, thetaStat, Tajimas_SNPmidpoint.py).
 # Usage: sbatch --job-name=TajD_<name> --ntasks=<threads> --mem=<mem>
 #        --output=TajD_<name>_%j.log run_TajD.sh <name> <minInd> <nIndiv>
+
+BASE_DIR=/private/groups/meyerlab/esteiger
 
 name=$1
 minind=$2
 nindiv=$3
 prefix="4x_${name}"
 
-outdir=/private/groups/meyerlab/esteiger/selection/TajD
+outdir=${BASE_DIR}/selection/TajD
 sites_file=${outdir}/all_sites
 regions=${outdir}/all_chrs.txt
-REF=/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked
-ANGSD=/private/groups/meyerlab/esteiger/software/angsd_dev/angsd
-RS=/private/groups/meyerlab/esteiger/software/angsd_dev/misc/realSFS
-THETASTAT=/private/groups/meyerlab/esteiger/software/angsd_dev/misc/thetaStat
-TAJIMAS=/private/groups/meyerlab/esteiger/gvtp_popgen/selection/TajD/Tajimas_SNPmidpoint.py
-BAM=/private/groups/meyerlab/esteiger/mapping/merged/bamlist_4x_${name}.txt
+REF=${BASE_DIR}/genome/DEINVI_genome.fasta.masked
+ANGSD=${BASE_DIR}/software/angsd_dev/angsd
+RS=${BASE_DIR}/software/angsd_dev/misc/realSFS
+THETASTAT=${BASE_DIR}/software/angsd_dev/misc/thetaStat
+TAJIMAS=${BASE_DIR}/gvtp_popgen/selection/TajD/Tajimas_SNPmidpoint.py
+BAM=${BASE_DIR}/mapping/merged/bamlist_4x_${name}.txt
 THREADS=${SLURM_NTASKS:-4}
 
-cd /private/groups/meyerlab/esteiger/mapping/merged
+cd ${BASE_DIR}/mapping/merged
 
 if [[ -f "${outdir}/${prefix}.Diana.out" ]]; then
     echo "[${name}] Skipping: ${prefix}.Diana.out already exists"

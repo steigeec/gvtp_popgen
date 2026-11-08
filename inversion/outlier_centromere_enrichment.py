@@ -1,24 +1,15 @@
 #!/usr/bin/env python3
 """
-Are GWAS outlier peaks closer to centromeres than expected?
+Test whether GWAS outlier loci lie closer to centromeres than expected.
 
-Centromeres: confident calls from call_centromeres.py (centromere-associated
-LINE cluster). Only scaffolds with a confident call are used.
-Outlier peaks per variable: outlier SNPs grouped into peaks of SNPs on the
-same scaffold <= PEAK_GAP apart (as in fog_deinvi6_figure.R), from
-  - "retained": outliers_for_annot_40000_3_<var>.txt (peaks of >= 3 SNPs)
-  - "unfiltered": unfiltered_outliers_for_annot_<var>.txt (all Bonferroni)
-Loci: peaks within LOCUS_GAP of each other merged (nearby peaks on one
-haplotype are not independent), represented by the most significant...
-here simply the mid-point of the merged span.
-Distance of a locus = 0 inside the centromere call, else bp to the nearer
-call edge; relative distance = that / length of the arm it sits on
-(0 = centromere, 1 = chromosome end).
-Null: each locus replaced by a random tested SNP (scaffold_snp_map.txt) on
-the SAME scaffold (keeps scaffold composition and SNP density), N_PERM times.
-One-sided p (closer than random) for mean relative distance and for the
-fraction of loci within NEAR_MB of the centromere.
+Centromeres: confident calls from call_centromeres.py. Outlier SNPs are grouped
+into peaks (<= PEAK_GAP apart) and peaks into loci (<= LOCUS_GAP apart); a locus
+is represented by the mid-point of its span. Relative distance = bp to the
+nearer call edge / arm length (0 = centromere, 1 = chromosome end).
+Null: each locus replaced by a random tested SNP on the same scaffold, N_PERM times.
 
+Inputs: outliers_for_annot_40000_3_<var>.txt ("retained"),
+        unfiltered_outliers_for_annot_<var>.txt ("unfiltered"), scaffold_snp_map.txt
 Usage: outlier_centromere_enrichment.py [var ...]   (default: fog)
 Output: OUT_DIR/outlier_centromere_<var>.tsv (per locus), printed summary
 """
@@ -29,9 +20,11 @@ import sys
 import numpy as np
 import pandas as pd
 
-GEMMA = "/private/groups/meyerlab/esteiger/selection/gemma"
-CEN = "/private/groups/meyerlab/esteiger/inversions/centromere/centromeres.tsv"
-OUT_DIR = "/private/groups/meyerlab/esteiger/inversions/centromere"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+GEMMA = f"{BASE_DIR}/selection/gemma"
+CEN = f"{BASE_DIR}/inversions/centromere/centromeres.tsv"
+OUT_DIR = f"{BASE_DIR}/inversions/centromere"
 PEAK_GAP, LOCUS_GAP, NEAR_MB, N_PERM = 40_000, 2_000_000, 5, 10000
 VARS = sys.argv[1:] or ["fog"]
 rng = np.random.default_rng(5)

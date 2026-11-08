@@ -1,9 +1,14 @@
 #!/bin/bash
+# Split sites not already paralog-filtered into chunks, submit ngsParalog_chunk.sh
+# as an array job, then merge the per-chunk .lr files.
+# Usage: bash launch_ngsParalog.sh  (submits the jobs itself)
 
-WORKDIR="/private/groups/meyerlab/esteiger/variant_calling/ngsParalog"
-SNPS_DIR="/private/groups/meyerlab/esteiger/variant_calling/angsd"
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+WORKDIR="${BASE_DIR}/variant_calling/ngsParalog"
+SNPS_DIR="${BASE_DIR}/variant_calling/angsd"
 MAFS="${SNPS_DIR}/noMAF_preParalog.mafs.gz"
-PREV_PARALOG="/private/groups/meyerlab/esteiger/variant_calling/angsd/paralog_filtered/postNGSparalog.sites.gz"
+PREV_PARALOG="${BASE_DIR}/variant_calling/angsd/paralog_filtered/postNGSparalog.sites.gz"
 CHUNKS_DIR="${WORKDIR}/chunks"
 N_CHUNKS=30
 
@@ -15,8 +20,7 @@ zcat "$MAFS" | grep -v "^chromo" | cut -f1-2 > "${WORKDIR}/all_sites.txt"
 NSITES=$(wc -l < "${WORKDIR}/all_sites.txt")
 echo "  Total sites: $NSITES"
 
-# Sites already in postNGSparalog.sites.gz passed ngsParalog previously — skip re-evaluation.
-# Sites not present there are written to a temp file and split into chunks.
+# sites already in postNGSparalog.sites.gz passed ngsParalog before and are not re-run
 PREV_FILTERED="${WORKDIR}/previously-paralog-filtered.sites"
 NEW_SITES="${WORKDIR}/new_sites_tmp.txt"
 awk -v prev_file="$PREV_FILTERED" -v new_file="$NEW_SITES" \

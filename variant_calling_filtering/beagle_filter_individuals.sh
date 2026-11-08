@@ -1,4 +1,7 @@
 #!/bin/bash
+# Subset a beagle GL file (optionally gzipped) to the individuals listed in a
+# file; the first 3 columns are always kept.
+# Usage: beagle_filter_individuals.sh <inds.txt> <in.beagle[.gz]> <out.beagle>
 
 INDS=$1
 BEAGLE1=$2
@@ -6,7 +9,6 @@ BEAGLE2=$3
 
 echo $INDS
 
-# Support gzip-compressed input
 if [[ "$BEAGLE1" == *.gz ]]; then
     read_beagle() { zcat "$BEAGLE1"; }
 else
@@ -18,17 +20,16 @@ header=$(read_beagle | head -n 1)
 cols=$(echo "$header" | tr '\t' '\n' | awk -v inds="$INDS" '
     BEGIN {
         while ((getline line < inds) > 0) {
-            keep[line] = 1  # Store individuals from $INDS
+            keep[line] = 1
         }
     }
-    NR <= 3 {print NR}  # Always keep the first 3 columns
-    NR > 3 && $0 in keep {print NR}  # Add matching columns
+    NR <= 3 {print NR}  # marker, allele1, allele2
+    NR > 3 && $0 in keep {print NR}
 ')
 
-# Filter and create $BEAGLE2
 read_beagle | awk -v cols="$cols" '
     BEGIN {
-        split(cols, c, "\n")  # Parse column indices into an array
+        split(cols, c, "\n")
         for (i in c) keep[c[i]] = 1
     }
     {
@@ -36,10 +37,10 @@ read_beagle | awk -v cols="$cols" '
         for (i = 1; i <= NF; i++) {
             if (i in keep) {
                 if (first) {
-                    printf "%s", $i  # Print first column without leading tab
+                    printf "%s", $i
                     first = 0
                 } else {
-                    printf "\t%s", $i  # Add a tab before subsequent columns
+                    printf "\t%s", $i
                 }
             }
         }

@@ -1,5 +1,7 @@
 #!/bin/bash
-
+# ngsF.sh
+# 100 ngsF replicates for one BAM-list chunk (approximate EM from random starts,
+# then refined), 10 in parallel. Usage: sbatch ngsF.sh <bamlist_chunk>
 #SBATCH --job-name=ngsF
 #SBATCH --partition=long    
 #SBATCH --nodes=1    	
@@ -8,12 +10,12 @@
 #SBATCH --time=168:00:00              
 #SBATCH --output=serial_test_%j.log   
 
-cd /private/groups/meyerlab/esteiger/diversity/ngsF
+BASE_DIR=/private/groups/meyerlab/esteiger
 
-# Get the input chunk of bamfiles name from command line argument
+cd ${BASE_DIR}/diversity/ngsF
+
 string=$1
 
-# Check if string was provided
 if [ -z "$string" ]; then
     echo "Error: Please provide a string argument"
     echo "Usage: sbatch script.sh <string>"
@@ -33,8 +35,8 @@ run_ngsF () {
 	export LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH
 	NUM=$1
 
-	ngsF=/private/groups/meyerlab/esteiger/software/ngsF/ngsF
-	GENOME="/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta"
+	ngsF=${BASE_DIR}/software/ngsF/ngsF
+	GENOME="${BASE_DIR}/genome/DEINVI_genome.fasta"
 
 	if [ ! -f ${string}_output/500k_sites_est_${NUM}.pars ]; then
 	   $ngsF --n_ind ${N_IND} --n_threads 10 --n_sites ${N_SITES} --glf ${GLF} --init_values r --approx_EM --seed $((12345 + NUM)) --min_epsilon 1e-9 --out ${string}_output/500k_sites_est_${NUM} >> ${string}_output/ngsF_log_${NUM}

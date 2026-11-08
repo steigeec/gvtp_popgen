@@ -1,26 +1,10 @@
 #!/usr/bin/env python3
 """
-Why are GNS1 and SNF1 only ~22 kb apart in D. increscens but ~1-1.7 Mb apart
-in its relatives? Locates the genes lying between the GNS1 and SNF1
-orthologues in sunflower (H. annuus) and lettuce (L. sativa) and asks where
-their Deinandra counterparts are.
-
-1. GNS1 (g4524.t4) and SNF1 (g14399.t1) partners in each relative: the
-   syntenic-block GENESPACE hits (synHits, blkID assigned) with the highest
-   bit score.
-2. Intervening genes: every gene in the relative's GENESPACE BED between the
-   two partners.
-3. For each intervening gene, its Deinandra location: the syntenic-block hit
-   if there is one, otherwise its best BLAST hit (allBlast; highest bit score)
-   -- flagged separately, since a best hit outside a syntenic block may be a
-   paralogue.
-4. Gene-by-gene order along the relative's segment (lettuce chr 5,
-   WINDOW_MB around the interval): which Deinandra chromosome each syntenic
-   gene maps to, and whether order is collinear within each Deinandra
-   chromosome (Spearman rho of relative vs Deinandra positions). Interleaved,
-   collinear runs on several Deinandra chromosomes are the signature of
-   differential gene loss among homeologous copies after a polyploidy, rather
-   than a recent rearrangement.
+Locate the genes between the GNS1 (g4524.t4) and SNF1 (g14399.t1) orthologues
+in sunflower and lettuce, and find their Deinandra counterparts (syntenic-block
+GENESPACE hit, else best BLAST hit, flagged separately). Also reports, along
+lettuce chr 5 (WINDOW_MB around the interval), which Deinandra chromosome each
+syntenic gene maps to and the Spearman rho of positions per chromosome.
 
 Usage: gns1_snf1_interval.py
 Output: OUT_DIR/gns1_snf1_intervening_<species>.tsv, OUT_DIR/gns1_snf1_lettuce_segment.tsv,
@@ -30,8 +14,10 @@ Output: OUT_DIR/gns1_snf1_intervening_<species>.tsv, OUT_DIR/gns1_snf1_lettuce_s
 import pandas as pd
 from scipy.stats import spearmanr
 
-GS = "/private/groups/meyerlab/esteiger/inversions/synteny/genespace"
-OUT_DIR = "/private/groups/meyerlab/esteiger/inversions/synteny"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+GS = f"{BASE_DIR}/inversions/synteny/genespace"
+OUT_DIR = f"{BASE_DIR}/inversions/synteny"
 GENES = {"GNS1": "g4524.t4", "SNF1": "g14399.t1"}
 SPECIES = ["Helianthus_annuus", "Lactuca_sativa"]
 WINDOW_MB = 3

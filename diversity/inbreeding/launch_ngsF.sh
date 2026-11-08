@@ -1,22 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-# Pipeline stage that comes AFTER doGlf_launch.sh (GLF/MAFS generation per chunk).
-# 1. Submits ngsF.sh (100 EM replicates) for every chunk that isn't already fully done.
-# 2. Queues a finalize step (--dependency=afterany) that only runs once all of those
-#    ngsF jobs have finished:
-#      - regenerates best_LL.txt (best of the 100 replicates per chunk, by final logLkl)
-#      - rebuilds ngsF_results.txt (BAM <TAB> NGSF, using each chunk's best replicate)
-#      - runs inbreeding_plot.R and drought_exploration.R on the fresh results
-# If no new ngsF jobs need to be submitted (everything already complete), the finalize
-# step runs immediately instead of being queued.
-#
-# Re-run safe: ngsF.sh itself skips any replicate whose .pars file already exists, and
-# this script skips submitting ngsF.sh at all for a chunk whose 100 replicates are
-# already complete.
+BASE_DIR=/private/groups/meyerlab/esteiger
 
-NGSF_DIR="/private/groups/meyerlab/esteiger/diversity/ngsF"
-SCRIPT_DIR="/private/groups/meyerlab/esteiger/gvtp_popgen/diversity/inbreeding"
+# launch_ngsF.sh
+# Run after doGlf_launch.sh. Submits ngsF.sh (100 EM replicates) for each chunk
+# not yet complete, then a finalize step (afterany) that picks each chunk's best
+# replicate by final logLkl, writes best_LL.txt and ngsF_results.txt, and runs
+# inbreeding_plot.R. If nothing needs submitting, finalize runs immediately.
+# Usage: bash launch_ngsF.sh [--finalize-only]
+
+NGSF_DIR="${BASE_DIR}/diversity/ngsF"
+SCRIPT_DIR="${BASE_DIR}/gvtp_popgen/diversity/inbreeding"
 
 cd "$NGSF_DIR"
 
@@ -49,9 +44,8 @@ finalize () {
 
   echo "best_LL.txt and ngsF_results.txt written."
 
-  echo "=== Finalize: running downstream R analyses ==="
+  echo "=== Finalize: running inbreeding_plot.R ==="
   Rscript "${SCRIPT_DIR}/inbreeding_plot.R"
-  Rscript "${SCRIPT_DIR}/drought_exploration.R"
 }
 
 if [ "${1:-}" == "--finalize-only" ]; then

@@ -1,45 +1,22 @@
 #!/usr/bin/env python3
 """
-Gene density and % LINE content along the 12 largest scaffolds (D. increscens
-2n = 24, so n = 12 chromosomes), with a grey box marking each scaffold's
-centromere call, to show where the centromeres sit genome-wide.
+Gene density and % LINE along the 12 largest scaffolds (n = 12), with a grey
+box over each scaffold's confident centromere call (inversions/centromere/
+centromeres.tsv, from inversion/call_centromeres.py).
 
-Tracks use the same inputs and conventions as the DEINVI_00006 figure
-(gvtp_popgen/inversion/scaffold_windows.py): WIN_SIZE windows; genes /
-repeats counted in a window only if they lie entirely inside it;
-RepeatMasker hits flagged as overlapping (trailing "*") excluded.
-Dashed grey line = genome-wide value (all scaffolds).
+Windows of WIN_SIZE; features counted only if entirely inside a window;
+RepeatMasker hits flagged as overlapping ("*") excluded. Dashed grey line =
+genome-wide value. The peak % LINE window (smoothed over SMOOTH windows) is
+printed per scaffold as a check on the centromere call.
 
-Grey box = centromere call from gvtp_popgen/inversion/call_centromeres.py
-(inversions/centromere/centromeres.tsv; "confident" calls only): the densest
-cluster of the centromere-associated LINE family (rnd-1_family-362), which
-forms one tight cluster on nearly every chromosome-scale scaffold. As a
-check, the scaffold's peak window of overall % LINE (smoothed over
-SMOOTH windows) is reported for each scaffold.
-
-Layout: N_COLS columns of scaffolds, in descending size order down each
-column in turn; each column's x-axis spans its longest scaffold. Each scaffold's stack of tracks is labelled by a vertical grey strip
-to its left carrying the scaffold name.
-
-With --manhattan, each scaffold also gets the fog GEMMA Manhattan on top,
-built exactly as annotated_manhattan.R exports it for the stacked figures:
-p_lrt with genomic control (lambda applied if > 1.05), Bonferroni line at
-0.05 / n SNPs, and peak-filtered points (non-outliers plus only the
-Bonferroni SNPs retained in 40000_3 peaks). For drawing speed only, a random
-LOW_P_KEEP of SNPs with -log10 p < LOW_P are plotted (they form the solid
-band at the bottom either way). The --manhattan version also adds a
-lettuce synteny track at the bottom of each stack: one point per GENESPACE
-syntenic gene pair inside a syntenic block (Lactuca_sativa_vs_Deinandra
-synHits, blkID assigned), at the gene's position on the scaffold, with y =
-its partner's position along the lettuce chromosomes syntenic with that
-scaffold (only chromosomes with >= MIN_SYN_GENES syntenic genes and >=
-MIN_SYN_FRAC of the scaffold's syntenic genes; laid end to end in numerical
-order, alternate chromosomes shaded; collinear runs appear as diagonals, their
-slope giving orientation). Track height is proportional to the lettuce
-sequence shown (SYN_UNITS_PER_GB, at least SYN_MIN_UNITS), and the figure
-height follows from the tallest column (PX_PER_UNIT). (lettuce lies outside the genome
-triplication shared by sunflower and Deinandra, so it stands in for the
-ancestral chromosomes; see inversion/synteny_junctions.py).
+With --manhattan, adds on top the fog GEMMA Manhattan as in
+annotated_manhattan.R (genomic control if lambda > 1.05, Bonferroni line,
+peak-filtered points; only a random LOW_P_KEEP of SNPs below LOW_P drawn), and
+at the bottom a lettuce synteny track: GENESPACE syntenic-block hits
+(Lactuca_sativa_vs_Deinandra), y = partner position along the lettuce
+chromosomes syntenic with that scaffold (>= MIN_SYN_GENES genes and
+>= MIN_SYN_FRAC of the scaffold's hits), laid end to end. Lettuce lies outside
+the triplication shared by sunflower and Deinandra.
 
 Usage: centromere_scaffolds.py [--manhattan]
 Output: OUT (or OUT_MANHATTAN)
@@ -53,13 +30,15 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-FAI = "/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked.fai"
-GFF = "/private/groups/meyerlab/esteiger/genome/remove_duplicates_rm_internalstops_longest_isoform.gff"
-RM_OUT = "/private/groups/meyerlab/esteiger/inversions/gene_density/DEINVI_genome.fasta.LTRfix.out"
-CENTROMERES = "/private/groups/meyerlab/esteiger/inversions/centromere/centromeres.tsv"
-OUT = "/private/groups/meyerlab/esteiger/inversions/centromere/centromere_scaffolds.jpg"
-OUT_MANHATTAN = "/private/groups/meyerlab/esteiger/inversions/centromere/centromere_scaffolds_manhattan.jpg"
-GEMMA_DIR = "/private/groups/meyerlab/esteiger/selection/gemma"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+FAI = f"{BASE_DIR}/genome/DEINVI_genome.fasta.masked.fai"
+GFF = f"{BASE_DIR}/genome/remove_duplicates_rm_internalstops_longest_isoform.gff"
+RM_OUT = f"{BASE_DIR}/inversions/gene_density/DEINVI_genome.fasta.LTRfix.out"
+CENTROMERES = f"{BASE_DIR}/inversions/centromere/centromeres.tsv"
+OUT = f"{BASE_DIR}/inversions/centromere/centromere_scaffolds.jpg"
+OUT_MANHATTAN = f"{BASE_DIR}/inversions/centromere/centromere_scaffolds_manhattan.jpg"
+GEMMA_DIR = f"{BASE_DIR}/selection/gemma"
 ASSOC = f"{GEMMA_DIR}/output/pheno6_lmm_results.assoc.txt"            # fog = pheno6
 RETAINED = f"{GEMMA_DIR}/fog/outliers_for_annot_40000_3_fog.txt"
 SNP_MAP = f"{GEMMA_DIR}/scaffold_snp_map.txt"
@@ -77,8 +56,8 @@ MARGINS = dict(left=0.08, right=0.995, top=0.995, bottom=0.022)   # figure fract
 LABEL_SIZE, TICK_SIZE, NAME_SIZE = 12, 9, 12
 SMALL_LABEL = 7.5      # y-axis titles of the narrow --manhattan tracks
 SHADE_ALPHA = 0.25
-LETTUCE_BED = "/private/groups/meyerlab/esteiger/inversions/synteny/genespace/bed/Lactuca_sativa.bed"
-SYNHITS = "/private/groups/meyerlab/esteiger/inversions/synteny/genespace/syntenicHits/Lactuca_sativa_vs_Deinandra.synHits.txt.gz"
+LETTUCE_BED = f"{BASE_DIR}/inversions/synteny/genespace/bed/Lactuca_sativa.bed"
+SYNHITS = f"{BASE_DIR}/inversions/synteny/genespace/syntenicHits/Lactuca_sativa_vs_Deinandra.synHits.txt.gz"
 LETTUCE = {f"CM0225{18 + i}.2": 1 + i for i in range(9)}   # CM022518.2 = lettuce chr 1, ...
 STRIP_COLOR, STRIP_W, STRIP_GAP = "#d9d9d9", 0.016, 0.004   # scaffold label strip (figure fractions)
 

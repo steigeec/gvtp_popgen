@@ -12,16 +12,15 @@ from collections import defaultdict
 import urllib.request
 import urllib.parse
 
-sys.path.insert(0, "/private/groups/meyerlab/esteiger/gvtp_popgen/selection/gemma")
+sys.path.insert(0, f"{BASE_DIR}/gvtp_popgen/selection/gemma")
 from curate_intergenic_by_ld import GENE_TOKEN_RE, load_gff_resolver, resolve_to_gene
 
-var_name = sys.argv[1]
-GFF = "/private/groups/meyerlab/esteiger/genome/remove_duplicates_rm_internalstops_longest_isoform.gff"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
 
-# Shared token-extraction + resolution logic (same as curate_intergenic_by_ld.py
-# and compute_gene_snp_stats.py use to build the gene list itself), so ANN
-# parsing below resolves compound "geneA-geneB" intergenic annotations to
-# BOTH real genes independently, instead of a fragile substring scan.
+var_name = sys.argv[1]
+GFF = f"{BASE_DIR}/genome/remove_duplicates_rm_internalstops_longest_isoform.gff"
+
+# Gene ID extraction and resolution shared with curate_intergenic_by_ld.py
 _gene_ids_gff, _tx2gene_shared = load_gff_resolver()
 
 # --- 1. Read gene list ---
@@ -34,8 +33,7 @@ with open(gene_list_file) as f:
             gene_ids.append(gid)
 gene_id_set = set(gene_ids)
 
-# Genes also supported by a 40000_3 (multi-SNP peak) outlier, if that scope
-# was run this pass — absent file just means "not run yet", not "no peaks".
+# Genes also supported by a 40000_3 (multi-SNP peak) outlier; file may be absent
 peak_40000_3_file = os.path.join(var_name, f"gene_list_{var_name}_40000_3.txt")
 genes_in_40000_3_peak = set()
 if os.path.exists(peak_40000_3_file):
@@ -65,12 +63,7 @@ if os.path.exists(ann_file) and os.path.getsize(ann_file) > 0:
                 annotation = parts[1]
                 impact = parts[2]
                 gene_id_ann = parts[4]
-                # gene_id_ann is "geneA-geneB" for intergenic_region (both
-                # flanking genes named at once) and a single id otherwise.
-                # Resolve and credit EVERY token independently -- both
-                # flanking genes are legitimate, separately-LD-verified
-                # candidates (see curate_intergenic_by_ld.py), not one
-                # combined entity, so neither should be skipped.
+                # gene_id_ann is "geneA-geneB" for intergenic_region; credit each gene separately
                 for tok in GENE_TOKEN_RE.findall(gene_id_ann):
                     gid = resolve_to_gene(tok, _gene_ids_gff, _tx2gene_shared)
                     if gid is None or gid not in gene_id_set:
@@ -80,13 +73,8 @@ if os.path.exists(ann_file) and os.path.getsize(ann_file) > 0:
                     if gid not in gene_ann_name:
                         gene_ann_name[gid] = tok
 
-# --- 3. Build gene_id <-> coordinates mapping from GFF (moved ahead of the
-# orthologs read below, since matching orthologs by gene now needs tx2gene) ---
-# gene_list_{var_name}.txt sometimes carries entries that aren't a clean gene
-# id: stray transcript ids (e.g. "g14399" whose real gene is "g4525" — see
-# resolve_gene_ids.R for the same issue upstream) and SnpEff's compound
-# "geneA-geneB" names for intergenic SNPs. resolve_coord() below handles both
-# so the Coordinates column isn't NA more often than it has to be.
+# --- 3. Build gene_id <-> coordinates mapping from GFF ---
+# resolve_coord() also handles transcript ids and SnpEff's "geneA-geneB" intergenic names
 gene_id_to_coord_all = {}
 tx2gene = {}
 gene_id_pattern = re.compile(r'gene_id=([^;]+)')
@@ -99,9 +87,7 @@ with open(GFF) as f:
         fields = line.strip().split('\t')
         if len(fields) < 9:
             continue
-        # tx2gene from the mRNA lines' own ID=/Parent= attributes, NOT the
-        # gene_id=/transcript_id= attributes (which can be stale — see
-        # lookup_by_gene_id.py header for the same underlying issue).
+        # tx2gene from mRNA ID=/Parent= attributes (gene_id=/transcript_id= can be stale)
         if fields[2] == 'mRNA':
             tm = mrna_id_pattern.search(fields[8])
             pm = mrna_parent_pattern.search(fields[8])
@@ -115,14 +101,8 @@ with open(GFF) as f:
                     gene_id_to_coord_all[gid] = f"{fields[0]}:{fields[3]}-{fields[4]}"
 
 # --- 4. Read orthologs ---
-# orthologs_{var}.txt (build_gene_orthology.py) is already keyed directly by
-# the real resolved Gene_ID -- no transcript/prefix resolution needed here,
-# unlike the old lookup_by_gene_id.py-based file. It also carries a direct
-# Acronym/Function_Description for the OrthoFinder:Arabidopsis_thaliana and
-# eggNOG tiers (curated symbol + description, no UniProt query needed for
-# those genes -- see section 6). BLAST_Gene_Names comes from the same file
-# now too (the old separate blast_{var}.filtered.txt was stale/orphaned --
-# nothing in the active pipeline regenerated it).
+# orthologs_{var}.txt (build_gene_orthology.py) is keyed by Gene_ID and includes
+# Acronym/Function_Description for the OrthoFinder and eggNOG tiers, and BLAST_Gene_Names.
 gene_orthologs = {}
 gene_ortholog_source = {}
 gene_acronym_direct = {}
@@ -168,10 +148,7 @@ def resolve_coord(name):
 gene_id_to_coord = {gid: (resolve_coord(gid) or "NA") for gid in gene_ids}
 
 # --- 5. Query UniProt for plant functional descriptions ---
-# Only needed as a fallback for genes without a direct Acronym/Function_Description
-# already supplied by build_gene_orthology.py (see section 4) -- i.e. genes
-# whose only hit was the strict-evalue sunflower BLAST tier, or with no
-# ortholog call at all.
+# Only for genes without an Acronym/Function_Description from build_gene_orthology.py
 # Prefer Asteraceae, then flowering plants, then all green plants
 TAXONOMY_TIERS = [
     ("Asteraceae", 4210),
@@ -181,8 +158,7 @@ TAXONOMY_TIERS = [
 
 def query_uniprot_taxon(search_term, taxon_id, reviewed_only=False):
     """Query UniProt for a gene function + primary gene symbol within a given taxonomy.
-    reviewed_only restricts to curated Swiss-Prot entries, which are far more
-    likely to have a gene_primary symbol populated than automatic/TrEMBL ones."""
+    reviewed_only restricts to curated Swiss-Prot entries."""
     try:
         q = f'{search_term} AND taxonomy_id:{taxon_id}'
         if reviewed_only:
@@ -197,8 +173,7 @@ def query_uniprot_taxon(search_term, taxon_id, reviewed_only=False):
                 cols = lines[1].split('\t')
                 protein_name = cols[0].strip() if cols[0] else ""
                 acronym = cols[1].strip() if len(cols) > 1 and cols[1] else ""
-                # NCBI LOC###### placeholders aren't real gene symbols — just
-                # another anonymous ID — so don't surface them as an "acronym".
+                # NCBI LOC###### placeholders are not gene symbols
                 if re.match(r'^LOC\d+$', acronym, re.IGNORECASE):
                     acronym = ""
                 function = ""
@@ -221,12 +196,8 @@ def query_uniprot_taxon(search_term, taxon_id, reviewed_only=False):
 
 def query_uniprot(search_term):
     """Query UniProt across plant taxonomic tiers, preferring Asteraceae.
-    Two full passes across ALL tiers: reviewed-only first (best shot at a
-    real gene symbol), then unrestricted (for at least a description) only
-    if no tier had a reviewed hit. A narrow tier's unreviewed/uncurated hit
-    (e.g. an unnamed Asteraceae relative) must not shadow a broader tier's
-    well-curated one (e.g. Arabidopsis) that actually has a gene symbol —
-    which is what tier-by-tier reviewed-then-unreviewed fallback used to do."""
+    Reviewed entries are searched across all tiers first; unreviewed entries
+    only if no tier has a reviewed hit."""
     for taxon_name, taxon_id in TAXONOMY_TIERS:
         result = query_uniprot_taxon(search_term, taxon_id, reviewed_only=True)
         if result:
@@ -240,19 +211,11 @@ def query_uniprot(search_term):
     return None
 
 def clean_for_search(text):
-    """Strip NCBI-specific 'isoform X#' suffixes before querying UniProt.
-    These are RefSeq auto-annotation artifacts absent from curated entries;
-    left in, they skew UniProt's ranking toward whichever poorly-annotated
-    species' record happens to contain that literal phrase, instead of the
-    best-curated match (e.g. "protein GRAVITROPIC IN THE LIGHT 1 isoform X2"
-    matches an uncharacterized squash LOC gene instead of Arabidopsis GIL1).
-    Only affects the search term — display columns keep the original text."""
+    """Strip RefSeq 'isoform X#' suffixes from the UniProt search term
+    (they bias ranking toward poorly annotated records). Display columns keep the original text."""
     return re.sub(r'\s+isoform\s+\S+$', '', text, flags=re.IGNORECASE).strip()
 
-# Collect unique search terms and batch lookup -- skip genes that already
-# have a direct Acronym or Function_Description from build_gene_orthology.py
-# (OrthoFinder:Arabidopsis_thaliana / eggNOG tiers): querying UniProt for
-# those would just add a slower, less-curated second opinion.
+# Collect unique search terms, skipping genes that already have an Acronym or Function_Description
 function_cache = {}
 search_terms_per_gene = {}
 
@@ -294,11 +257,8 @@ for i, term in enumerate(sorted(unique_terms)):
 # --- 6. Write summary ---
 out_file = os.path.join(var_name, f"gene_summary_{var_name}.tsv")
 with open(out_file, 'w') as out:
-    # Gene_ID is the real resolved key (same id used in gene_list_*_unfiltered.txt
-    # and gene_snp_stats_*.tsv) -- Gene_Name is a display label only, so
-    # downstream joins must use Gene_ID, never Gene_Name. Ortholog_Source
-    # records which tier (BLAST:Helianthus_annuus / OrthoFinder:Arabidopsis_
-    # thaliana / eggNOG / none) produced the Orthologs value, for transparency.
+    # Join on Gene_ID downstream; Gene_Name is a display label only.
+    # Ortholog_Source: BLAST:<genus>, OrthoFinder:Arabidopsis_thaliana, eggNOG or none.
     out.write("Gene_ID\tCoordinates\tGene_Name\tIn_40000_3_Peak\tOrthologs\tOrtholog_Source\t"
                "BLAST_Gene_Names\tAcronym\tFunction_Description\tMutation_Types\tImpact_Levels\n")
     for gid in sorted(gene_ids):

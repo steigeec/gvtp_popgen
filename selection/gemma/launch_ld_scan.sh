@@ -1,17 +1,16 @@
 #!/bin/bash
-# Run as: bash launch_ld_scan.sh  (NOT sbatch -- array size must be known at submission)
-#
-# Submits ld_scan_array.sh over only the scaffolds that actually carry a
-# candidate gene (candidate_gene_intervals.tsv, from
-# find_intergenic_candidate_genes.py) -- not the whole genome. Split into
-# small/large tiers by LD file size, same pattern as launch_PruneGraph.sh,
-# since it's already proven at this scale on these exact files.
+# Submits ld_scan_array.sh over scaffolds carrying a candidate gene
+# (candidate_gene_intervals.tsv from find_intergenic_candidate_genes.py),
+# split into small/large jobs by LD file size.
+# Usage: bash launch_ld_scan.sh [r2_threshold, default 0.7]  (run with bash, not sbatch)
 
 set -euo pipefail
 
-LD_DIR=/private/groups/meyerlab/esteiger/variant_calling/ngsLD
-WORKDIR=/private/groups/meyerlab/esteiger/selection/gemma/ld_curation
-ARRAY_SCRIPT=/private/groups/meyerlab/esteiger/gvtp_popgen/selection/gemma/ld_scan_array.sh
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+LD_DIR=${BASE_DIR}/variant_calling/ngsLD
+WORKDIR=${BASE_DIR}/selection/gemma/ld_curation
+ARRAY_SCRIPT=${BASE_DIR}/gvtp_popgen/selection/gemma/ld_scan_array.sh
 R2_THRESHOLD="${1:-0.7}"
 
 cd "$WORKDIR"

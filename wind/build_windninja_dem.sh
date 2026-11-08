@@ -10,7 +10,10 @@
 # WindNinja names its outputs after the DEM (region_dem_<date>_..._vel.asc) and
 # downstream scripts parse that name, so keep the basename.
 #
-# Env:    internet access (login node), GDAL (windninja conda env)
+# Conda env: windninja
+#   conda create -n windninja -c conda-forge windninja=3.13.0.1
+#   (also provides GDAL: gdalwarp, gdal_translate, gdallocationinfo)
+# Needs internet access (login node).
 # Usage:  bash build_windninja_dem.sh
 set -euo pipefail
 

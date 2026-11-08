@@ -6,7 +6,9 @@ TCDC entire atmosphere) for the same 4896 timesteps as download_hrrr_wind.py.
 Output: GRIB2 files in BASE_DIR/wind/windninja_full/grib2,
         read by run_windninja_landfire_batch.sh and
         run_windninja_tranquillon_sensitivity.sh
-Env:    'herbie' conda env
+Conda env: herbie
+  conda create -n herbie -c conda-forge python=3.11 herbie-data=2026.3.0
+  (Herbie also brings pandas, xarray, cfgrib and scipy)
 Usage:  /private/home/esteiger/miniconda3/envs/herbie/bin/python3 download_hrrr_full_subset.py
 Files already on disk are skipped by Herbie.
 """

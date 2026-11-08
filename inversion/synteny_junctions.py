@@ -1,28 +1,14 @@
 #!/usr/bin/env python3
 """
-Is each chromosome-scale scaffold's centromere a junction between two
-ancestral chromosome segments (as on DEINVI_00006)?
+Classify each confident centromere (call_centromeres.py) as a junction between
+two ancestral chromosome segments or not, using GENESPACE syntenic hits to
+lettuce (primary reference) and sunflower.
 
-Reference: lettuce (Lactuca sativa), which lies outside the genome
-triplication shared by sunflower and Deinandra, so each Deinandra region has
-one lettuce counterpart; sunflower (Helianthus annuus) is reported alongside
-as support. Syntenic gene pairs = GENESPACE syntenic hits inside a syntenic
-block (blkID assigned).
-
-For each scaffold with a confident centromere call (call_centromeres.py):
-starting from the syntenic gene nearest each edge of the call and moving
-outwards, follow the run of genes whose partner lies on the SAME partner
-chromosome, tolerating up to MAX_STRAY consecutive genes with another partner
-(single misplaced genes, small transpositions). The centromere is classed as
-  junction      the partner chromosome of the two flanking runs differs, and
-                each flanking run has >= MIN_RUN genes
-  continuous    the same partner chromosome flanks both sides, each run
-                >= MIN_RUN genes
-  possible      either case, but a flanking run has < MIN_RUN genes (e.g. a
-                single gene of the left-arm partner just past the centromere,
-                then a switch), so the junction may lie just off the call
-Also reported: syntenic genes on each arm, the length (genes, Mb) of each
-flanking run, and the gap without syntenic genes spanning the centromere.
+From the syntenic gene nearest each call edge, follow outwards the run of genes
+with the same partner chromosome (tolerating up to MAX_STRAY other genes):
+  junction      flanking runs have different partners, each >= MIN_RUN genes
+  continuous    same partner on both sides, each run >= MIN_RUN genes
+  possible      either case, but a flanking run has < MIN_RUN genes
 
 Usage: synteny_junctions.py
 Output: OUT (one row per scaffold x species), printed table
@@ -31,9 +17,11 @@ Output: OUT (one row per scaffold x species), printed table
 import numpy as np
 import pandas as pd
 
-GS = "/private/groups/meyerlab/esteiger/inversions/synteny/genespace/syntenicHits"
-CEN = "/private/groups/meyerlab/esteiger/inversions/centromere/centromeres.tsv"
-OUT = "/private/groups/meyerlab/esteiger/inversions/synteny/synteny_junctions.tsv"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+GS = f"{BASE_DIR}/inversions/synteny/genespace/syntenicHits"
+CEN = f"{BASE_DIR}/inversions/centromere/centromeres.tsv"
+OUT = f"{BASE_DIR}/inversions/synteny/synteny_junctions.tsv"
 SPECIES = {"Lactuca_sativa": "lettuce", "Helianthus_annuus": "sunflower"}
 LETTUCE = {f"CM0225{18 + i}.2": str(1 + i) for i in range(9)}   # CM022518.2 = lettuce chr 1, ...
 MAX_STRAY, MIN_RUN = 2, 5
@@ -50,7 +38,7 @@ def hits(sp, cen):
 
 
 def flank_run(g):
-    """g: hits ordered outwards from the centromere -> (partner, n genes, Mb spanned, start, end)"""
+    """g: hits ordered outwards from the centromere. Returns (partner, n genes, Mb spanned, first position)."""
     p0, n, stray, first, last = g.partner.iloc[0], 0, 0, g.x.iloc[0], g.x.iloc[0]
     for p, x in zip(g.partner, g.x):
         if p == p0:

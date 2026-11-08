@@ -1,4 +1,7 @@
 #!/bin/bash
+# GEMMA univariate LMM (likelihood ratio test) for each of the 16 environmental variables in env.txt, one per array task.
+# Conda env: gemma
+#   conda create -n gemma -c bioconda gemma=0.98.3
 
 #SBATCH --job-name=gemma_lmm
 #SBATCH --partition=long
@@ -9,24 +12,22 @@
 #SBATCH --output=gemma_lmm_%A_%a.log
 #SBATCH --array=1-16
 
+BASE_DIR=/private/groups/meyerlab/esteiger
+
 eval "$(conda shell.bash hook)"
 conda activate gemma
 
-PCS="/private/groups/meyerlab/esteiger/selection/gemma/covariates_intercept.txt"
-BFILE="/private/groups/meyerlab/esteiger/selection/gemma/postParalog_MAF_4x_GLimp_clean"
-PHENO="/private/groups/meyerlab/esteiger/selection/gemma/env.txt"
+PCS="${BASE_DIR}/selection/gemma/covariates_intercept.txt"
+BFILE="${BASE_DIR}/selection/gemma/postParalog_MAF_4x_GLimp_clean"
+PHENO="${BASE_DIR}/selection/gemma/env.txt"
 KINSHIP="output/kinship.cXX.txt"
 KINSHIP_DONE="output/kinship.done"
 
-cd /private/groups/meyerlab/esteiger/selection/gemma
+cd ${BASE_DIR}/selection/gemma
 
 i=${SLURM_ARRAY_TASK_ID}
 
-# Relatedness (kinship) matrix is shared across all 16 phenotypes, so it's
-# computed once, gated to array task 1, instead of every task racing to
-# write the same file. -n 1 only selects which individuals to include (any
-# phenotype column with the same missingness pattern would do the same
-# thing here) -- it does not restrict -gk to phenotype 1's values.
+# Kinship matrix is computed once by task 1; -n 1 only sets which individuals are included.
 if [ "$i" -eq 1 ]; then
     if [ -f "$KINSHIP_DONE" ]; then
         echo "Kinship matrix already computed, skipping."
@@ -49,14 +50,8 @@ else
     echo "Kinship matrix ready."
 fi
 
-# run univariate LMM, kinship-corrected
-# -k  relatedness matrix (shared across all phenotypes, computed above)
-# -c  covariates, including an explicit intercept column (GEMMA does not
-#     add one implicitly when -c is supplied -- see PC_env_creation.R)
-# -lmm [num] option specifies which frequentist test to use, i.e. -lmm 1 performs
-# Wald test, -lmm 2 performs likelihood ratio test, -lmm 3 performs score test, and -lmm 4
-# performs all the three tests
-# -n : which of the environmental variables do I want to use each time?
+# -c covariates include an explicit intercept column (GEMMA does not add one when -c is given).
+# -lmm 2 = likelihood ratio test; -n = column of env.txt.
 gemma -bfile ${BFILE} \
       -p ${PHENO} \
       -k ${KINSHIP} \

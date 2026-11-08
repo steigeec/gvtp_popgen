@@ -7,7 +7,9 @@
 ## Outputs (in BASE_DIR/wind/windscape/random_walk/):
 ##   pop_deposition_<clim>_hl<h>.txt (row = source population)
 ##   windscape_random_walk_results.txt
-## R libraries: R_libs_windscape, R_libs (windscape, terra, geosphere)
+## R libraries: windscape 2.0.0 and terra 1.9-50 (CRAN) in BASE_DIR/software/R_libs_windscape,
+##   installed with install.packages(c("windscape", "terra"), lib = <that dir>);
+##   geosphere from BASE_DIR/software/R_libs
 ## Usage: Rscript windscape_population_random_walk.R
 
 BASE_DIR <- "/private/groups/meyerlab/esteiger"

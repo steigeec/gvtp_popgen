@@ -5,7 +5,9 @@
 ##
 ## Output: BASE_DIR/wind/windscape/sensitivity/<variant>_strauss_hours.txt,
 ##   <variant>_results.txt, tranquillon_sensitivity_results.txt (combined)
-## R libraries: R_libs_windscape, R_libs (windscape, terra, geosphere)
+## R libraries: windscape 2.0.0 and terra 1.9-50 (CRAN) in BASE_DIR/software/R_libs_windscape,
+##   installed with install.packages(c("windscape", "terra"), lib = <that dir>);
+##   geosphere from BASE_DIR/software/R_libs
 ## Usage: Rscript windscape_tranquillon_sensitivity.R base mesh100 landfire diurnal stability full
 ##   Variants can run as separate parallel calls; each call rebuilds the combined table.
 

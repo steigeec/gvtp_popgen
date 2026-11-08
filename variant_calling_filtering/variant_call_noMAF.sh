@@ -1,24 +1,28 @@
 #!/bin/bash
+# ANGSD SNP calling (GLs, mafs, beagle, BCF, genotypes) for one genome chunk,
+# with no MAF filter.
+# Usage: variant_call_noMAF.sh <chunk_regions_file> <bamlist> <ref.fasta>  (run by launch_variant_call_noMAF.sh)
+
+BASE_DIR=/private/groups/meyerlab/esteiger
 
 chunk=$1
 BAMS=$2
 REF=$3
-indir="/private/groups/meyerlab/esteiger/variant_calling/angsd/chromo_30_chunks/"
-outdir="/private/groups/meyerlab/esteiger/variant_calling/angsd"
+indir="${BASE_DIR}/variant_calling/angsd/chromo_30_chunks/"
+outdir="${BASE_DIR}/variant_calling/angsd"
 export TMPDIR="/tmp"
 prefix="./"
 string=${chunk#"$prefix"}
-ANGSD="/private/groups/meyerlab/esteiger/software/angsd_dev/angsd"
+ANGSD="${BASE_DIR}/software/angsd_dev/angsd"
 
 echo -e "\nprocessing ${chunk}"
 
-# Skip if output already exists
 if [ -f "${outdir}/${string}.mafs.gz" ]; then
   echo "  Output already exists for ${chunk}, skipping."
   exit 0
 fi
 
-# Atomic lock using mkdir (only one process can create the directory)
+# mkdir is atomic, so only one job can take the lock
 LOCKDIR="${outdir}/${string}.lock"
 if ! mkdir "$LOCKDIR" 2>/dev/null; then
   echo "  ${chunk} is already being processed by another job, skipping."
@@ -26,7 +30,7 @@ if ! mkdir "$LOCKDIR" 2>/dev/null; then
 fi
 trap 'rmdir "$LOCKDIR" 2>/dev/null' EXIT
 
-cd /private/groups/meyerlab/esteiger/mapping/merged
+cd ${BASE_DIR}/mapping/merged
 
 $ANGSD -P 9 -bam $BAMS -ref $REF -rf ${indir}/${string} -out ${outdir}/${string} \
 -doGlf 2 -doCounts 1 -doMaf 1 -doPost 1 -baq 1 -doMajorMinor 4 -GL 2 -doBcf 1 \
@@ -36,23 +40,16 @@ $ANGSD -P 9 -bam $BAMS -ref $REF -rf ${indir}/${string} -out ${outdir}/${string}
 
 # SNP FILTERS: 
 # No MAF filter -- rare variants are critical for unbiased SFS and Tajima's D
-# -doSnpStat 1: enables SNP artifact filters (requires ANGSD >= 0.941 for correct hetbias behaviour)
-# -hetbias_pval 1e-5: removes sites with excess het in reads from het-called individuals (paralogs)
-# -sb_pval 1e-4:   removes sites with strand bias in minor allele reads
-# -edge_pval 1e-4: removes sites where minor allele reads cluster near read ends
-# -mapQ_pval 1e-4: removes sites where minor allele reads have lower mapping quality
-# -doHWE 1: required by doSnpStat; -doGeno 1: required for BCF GT field
-
-# OUTPUTS:
-# Beagle/BCF outputs included
+# -SNP_pval 1e-7: keep only sites that are confidently variable
+# -doGeno 1: required for the BCF GT field; -doHWE 1: per-site HWE estimates (no HWE filter applied)
+# Paralogs are removed afterwards with ngsParalog (launch_ngsParalog.sh, site_filter.R)
 
 # COVERAGE FILTERS:
-# Should ranges from 1 to some 30x in up to perhaps 980 plants... 
-# -minInd 300          <- There are 842 individuals total. Only keep sites with at least minIndDepth (default is 1) from at least [int] individuals. 
-#	       If <300 individuals sequenced to 1x at that site, there's almost certainly something wrong with that site. 
-# -setMinDepthInd 1    <- Discard individual if sequencing depth for an individual is below [int]. This filter is only applied to analysis which are based on counts of alleles i.e. analysis that uses -doCounts
-#                        I go down to 1x here, because I'll be combining these individuals with my various datasets... 
-# -setMinDepth 4623     
-# -setMaxDepth 23116   <-between half and 2.5x the sum of the average autosomal sequencing depth of individuals 
-# -setMaxDepthInd 120  <- Discard individual if sequencing depth for an individual is above [int]. 
-#	       I use 2x my highest coverage individual, which is 60x 
+# Individual depth ranges from ~1x to ~30x, in up to perhaps 980 plants.
+# -minInd 300          sites must have data (depth >= setMinDepthInd) in at least 300 of 842 individuals;
+#                      a site with fewer than 300 individuals at 1x almost certainly has a problem
+# -setMinDepthInd 1    discard an individual's data below this depth (only for -doCounts analyses);
+#                      kept at 1x because these individuals are combined with other datasets
+# -setMinDepth 4623
+# -setMaxDepth 23116   0.5x and 2.5x the summed mean autosomal depth across individuals
+# -setMaxDepthInd 120  discard an individual's data above this depth: 2x the highest-coverage individual (60x)

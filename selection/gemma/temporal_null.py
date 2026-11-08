@@ -2,12 +2,12 @@
 Shared pieces of the temporal (germination-year) tests' random-SNP nulls,
 used by fog_peaks_temporal.py and DEINVI_0006_stacked.py (panel J).
 
-- polarize(): favorable-allele dosage, exactly as for the outlier SNPs
+- polarize(): favorable-allele dosage, as for the outlier SNPs
   (allele whose coverage-adjusted dosage increases with long-term fog
   across all samples; germ_year_polygenic.R / fog_deinvi6_figure.R).
 - cen_dist() / cen_band(): distance of a position from its scaffold's
   centromere (0 inside the call, else bp to the nearer edge; NaN if the
-  scaffold has no confident call -- inversions/centromere/centromeres.tsv,
+  scaffold has no confident call in inversions/centromere/centromeres.tsv
   from call_centromeres.py), and the band of distances a peak's null SNPs
   are drawn from: d +- max(CEN_BAND_MIN, CEN_BAND_FRAC * d), floored at 0.
 - cen_null_dosages(): imputed DS dosages for SNPs in random 2 kb regions
@@ -24,16 +24,17 @@ import tempfile
 import numpy as np
 import pandas as pd
 
-VCF_DS = "/private/groups/meyerlab/esteiger/variant_calling/angsd/postParalog_MAF_auto_GLimp_clean.vcf.gz"
-ENV = "/private/groups/meyerlab/esteiger/env_var.txt"
-CEN = "/private/groups/meyerlab/esteiger/inversions/centromere/centromeres.tsv"
-CEN_NULL_CACHE = "/private/groups/meyerlab/esteiger/selection/gemma/fog/temporal_null_cendist_snps.tsv.gz"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+VCF_DS = f"{BASE_DIR}/variant_calling/angsd/postParalog_MAF_auto_GLimp_clean.vcf.gz"
+ENV = f"{BASE_DIR}/env_var.txt"
+CEN = f"{BASE_DIR}/inversions/centromere/centromeres.tsv"
+CEN_NULL_CACHE = f"{BASE_DIR}/selection/gemma/fog/temporal_null_cendist_snps.tsv.gz"
 CEN_BAND_MIN, CEN_BAND_FRAC = 1_000_000, 0.25
 CEN_REGIONS_PER_BAND, REGION_BP = 1500, 2000
 EXCLUDE_CHROM, EXCLUDE_FLANK = "DEINVI_00006", 500_000
 # 13 individuals with untrustworthy coordinates (Location "Strauss" but genetic
-# cluster Point_Conception / VAFB_Lion_Head; see gvtp_popgen/wind/*) -- excluded
-# from polarization and from every test
+# cluster Point_Conception / VAFB_Lion_Head), excluded from polarization and all tests
 BAD_COORD_IDS = {"4548", "4549", "4550", "4551", "4552", "4553", "4554",
                  "4555", "4556", "4557", "4559", "4561", "4562"}
 

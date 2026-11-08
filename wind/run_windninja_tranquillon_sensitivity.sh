@@ -12,7 +12,9 @@
 #         (build_windninja_dem.sh), tranquillon_landfire.lcp (build_landfire_lcp.sh)
 # Output: BASE_DIR/wind/windninja_landfire/sensitivity/<variant>/,
 #         read by windscape_tranquillon_sensitivity.R
-# Env:    windninja conda env
+# Conda env: windninja
+#   conda create -n windninja -c conda-forge windninja=3.13.0.1
+#   (also provides GDAL: gdalwarp, gdal_translate, gdallocationinfo)
 # Usage:  sbatch --array=0-4 run_windninja_tranquillon_sensitivity.sh
 # Timesteps already run are skipped.
 

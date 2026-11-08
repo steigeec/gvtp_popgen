@@ -1,73 +1,43 @@
 #!/bin/bash
-# =============================================================================
-# launch_rohan.sh — Build remaining-sample task list, submit the two-phase
-#                    ROHan SLURM arrays (rohan_phase1.sh, rohan_phase2.sh)
+# launch_rohan.sh
+# Build the task list of samples without a summary.txt and submit the ROHan
+# arrays rohan_phase1.sh and rohan_phase2.sh, one task per sample. Re-run until
+# every sample is done; the task list is rebuilt each time.
 #
-# Prerequisites (must be run first, in order):
-#   1. prep_samples.sh    → writes samples_gt3x.tsv / bamlist_rohan.txt
-#   2. estimate_rohmu.sh  → writes chosen_rohmu.txt  (REVIEW before continuing)
+# Phase 1 (MCMC, --nohmm) is the expensive step. It runs with -t 8, which made
+# visibly more MCMC progress than -t 1 in a benchmark on a slow sample, so
+# concurrency is capped lower. The 3-day limit is well above observed runtimes
+# (< 24 h) but backfills more easily than the 14-day partition cap. ROHan has
+# no checkpointing, so a timed-out sample restarts on the next run.
+# Phase 2 (HMM, --hmm) takes minutes.
 #
-# One SLURM array task per remaining sample (not per chunk) so each sample's
-# progress and time limit are independent, and SLURM can backfill freely.
-# Rebuilds rohan_tasks.tsv from scratch every run, skipping any sample that
-# already has a summary.txt — safe to re-run this after a partial/timed-out
-# pass to pick up only what's left; array indices are reassigned each time.
+# Requires, in order: prep_samples.sh (samples_gt3x.tsv), estimate_rohmu.sh
+# (chosen_rohmu.txt, review before continuing).
 #
-# Phase 1 (rohan_phase1.sh): MCMC het estimation (--nohmm), the expensive step
-#   — up to 3 days per sample (submitted on the `long` partition, whose real
-#   cap is 14 days, but observed runtimes top out well under 24h even for the
-#   highest-coverage samples, so a shorter ask backfills into the scheduler
-#   far more easily than a 14-day request would), MAX_CONCURRENT_P1 running at
-#   once.  Runs with -t 8 (8 threads/sample): a benchmark on a representative
-#   slow sample showed threads=8 reaching visibly more MCMC progress than
-#   threads=1 in the same wall-clock window, so concurrency here is capped
-#   lower (8 cores/task) to keep the cluster footprint reasonable.  A sample
-#   that genuinely needs longer than 3 days will TIMEOUT and restart from
-#   scratch on the next re-run of this script (ROHan has no checkpointing).
-# Phase 2 (rohan_phase2.sh): HMM ROH calling (--hmm), fast (~minutes).
-#   Submitted with NO dependency on phase 1 — an earlier version used
-#   --dependency=aftercorr:<phase1 jobid> so each task would wait on its own
-#   phase-1 counterpart, but this proved UNRELIABLE at this array size: most
-#   elements never left "Dependency" state even days after their phase-1
-#   counterpart completed successfully (confirmed via `scontrol show job`,
-#   2026-09-09 — only a handful of low array indices ever actually fired).
-#   Instead rohan_phase2.sh self-validates (checks its sample's hEst.gz with
-#   gzip -t) and exits 0 cleanly if phase 1 isn't done yet — safe to submit
-#   broadly; stragglers just get picked up on the next re-run of this script.
+# Phase 2 is submitted without a dependency because aftercorr dependencies did
+# not release reliably at this array size. rohan_phase2.sh exits 0 if its
+# sample's hEst.gz is not ready, and the sample is picked up on the next run.
 #
-# *** SAFETY WARNING about re-running this script ***
-#   rohan_phase1.sh self-skips (exits 0) if its sample already has a VALID
-#   hEst.gz — safe to resubmit broadly for already-finished samples. But a
-#   sample whose phase 1 task is CURRENTLY RUNNING (mid-MCMC, hEst.gz not
-#   written yet) has no such protection: a second phase-1 task for that same
-#   sample would start writing to the same output prefix concurrently, risking
-#   real corruption. Don't re-run this script (which resubmits BOTH phases)
-#   while a previous phase-1 array still has RUNNING tasks — check
-#   `squeue -u $USER` first. If you just want to pick up newly-finished phase-1
-#   samples into phase 2 without touching phase 1 at all, submit phase 2 alone:
-#     n=$(wc -l < rohan_tasks.tsv); sbatch --array=1-${n}%40 rohan_phase2.sh
-#   (using the SAME rohan_tasks.tsv the active phase1 array was submitted
-#   with, so array indices still line up — don't rebuild the task list first).
+# Do not re-run while a phase 1 array still has running tasks: a second task
+# for the same sample would write to the same prefix. To resubmit phase 2 only,
+# using the existing rohan_tasks.tsv:
+#   n=$(wc -l < rohan_tasks.tsv); sbatch --array=1-${n}%40 rohan_phase2.sh
 #
-# Also gzips each completed sample's ${prefix}.log the first time it's seen
-# done — nothing reads that file's content, and it's almost entirely repeated
-# ASCII progress-bar redraws (no terminal to overwrite them in place), so it
-# compresses ~99%.  Only touches samples with a summary.txt already, so it
-# never races a still-running phase 1/2 task still appending to its log.
+# Logs of completed samples are gzipped (mostly progress-bar redraws).
 #
-# Usage: bash launch_rohan.sh   (safe to re-run repeatedly until all done)
-# =============================================================================
+# Usage: bash launch_rohan.sh
 
 set -euo pipefail
 
-OUTDIR=/private/groups/meyerlab/esteiger/diversity/ROH/ROHan
-SCRIPT_DIR=/private/groups/meyerlab/esteiger/gvtp_popgen/diversity/ROHan
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+OUTDIR=${BASE_DIR}/diversity/ROH/ROHan
+SCRIPT_DIR=${BASE_DIR}/gvtp_popgen/diversity/ROHan
 SAMPLES_TSV=$OUTDIR/samples_gt3x.tsv
 ROHMU_FILE=$OUTDIR/chosen_rohmu.txt
 TASK_FILE=$OUTDIR/rohan_tasks.tsv
 
-# Phase 1 runs -t 8 (8 cores/task): 25 concurrent = 200 cores footprint.
-# Phase 2 is single-threaded and fast: 40 concurrent = 40 cores footprint.
+# Phase 1: 8 cores/task. Phase 2: single-threaded.
 MAX_CONCURRENT_P1=25
 MAX_CONCURRENT_P2=40
 

@@ -7,18 +7,20 @@
 #SBATCH --time=168:00:00
 #SBATCH --output=merge_filter_snps_%j.log
 
-# Post-processing after variant_call_noMAF.sh completes.
-# 1. Merge per-chunk outputs into noMAF_preParalog.* (all SNPs)
-# 2. Build noMAF_preParalog.sites (sorted, indexed) for the doSaf/TajD pipeline
-# 3. Remove per-chunk files
-# NOTE: GEA subsetting (MAF filter + beagle/BCF filter) happens in create_file_subsets.sh
-#       AFTER paralog filtering with ngsParalog, since GEA requires paralog-clean sites.
+# Run after all variant_call_noMAF.sh chunks finish:
+# 1. merge per-chunk outputs into noMAF_preParalog.* (all SNPs)
+# 2. build and index noMAF_preParalog.sites (doSaf/Tajima's D)
+# 3. write MAF > 0.05 sites for ngsParalog
+# 4. remove per-chunk files
+# MAF and paralog subsetting is done afterwards in filterParalogMAF_prepNGSld.sh.
 
-SNPS_DIR="/private/groups/meyerlab/esteiger/variant_calling/angsd"
-CHUNKS_DIR="/private/groups/meyerlab/esteiger/variant_calling/angsd/chromo_30_chunks"
-ANGSD="/private/groups/meyerlab/esteiger/software/angsd/angsd"
+BASE_DIR=/private/groups/meyerlab/esteiger
 
-export TMPDIR="/private/groups/meyerlab/esteiger/tmp/"
+SNPS_DIR="${BASE_DIR}/variant_calling/angsd"
+CHUNKS_DIR="${BASE_DIR}/variant_calling/angsd/chromo_30_chunks"
+ANGSD="${BASE_DIR}/software/angsd/angsd"
+
+export TMPDIR="${BASE_DIR}/tmp/"
 ulimit -n 100000
 
 cd "$SNPS_DIR"
@@ -113,7 +115,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "=== Step 3: Building preParalog_0.05maf.sites (MAF > 0.05 sites that still have paralog problem sites) ==="
-MAF_SITES="/private/groups/meyerlab/esteiger/variant_calling/ngsParalog/preParalog_0.05maf.sites"
+MAF_SITES="${BASE_DIR}/variant_calling/ngsParalog/preParalog_0.05maf.sites"
 if [ -f "$MAF_SITES" ]; then
   echo "  preParalog_0.05maf.sites already exists, skipping."
 else

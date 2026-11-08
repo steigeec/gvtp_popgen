@@ -8,6 +8,8 @@
 ## Pearson r across edges. Run for every FRAME lambda_m fit found, on edges
 ## touching sampled nodes (primary) and on all edges.
 ##
+## R libraries: windscape 2.0.0 and terra 1.9-50 (CRAN) in BASE_DIR/software/R_libs_windscape,
+##   installed with install.packages(c("windscape", "terra"), lib = <that dir>)
 ## Usage: Rscript frame_wind_asymmetry.R
 ## Output (in migration/FEEMS/): frame_wind_asymmetry_results.tsv,
 ##   frame_wind_asymmetry_null.tsv, frame_wind_asymmetry.jpg

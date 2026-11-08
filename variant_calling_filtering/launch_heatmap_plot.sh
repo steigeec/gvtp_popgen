@@ -8,9 +8,13 @@
 #SBATCH --time=168:00:00              # long max is 14 days * 24 hrs = 168 hrs; medium is 
 #SBATCH --output=serial_test_%j.log   # Standard output and error log
 
-cd /private/groups/meyerlab/esteiger/variant_calling/ngsLD
+# Run heatmap_processed.sh on the DEINVI_00007 LD files.
+
+export BASE_DIR=/private/groups/meyerlab/esteiger
+
+cd ${BASE_DIR}/variant_calling/ngsLD
 
 find . -name 'DEINVI_00007*_heatmap_processed.ld' | parallel -j 1 '
-	./heatmap_processed.R $(basename {})
+	${BASE_DIR}/gvtp_popgen/variant_calling_filtering/heatmap_processed.sh $(basename {})
 '
 

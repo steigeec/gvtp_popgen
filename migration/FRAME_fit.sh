@@ -14,8 +14,13 @@
 # value to the python call to fix it.
 # The pooled plink input is built from the LD-pruned VCF as in FEEMS.sh,
 # once; skipped if it already exists.
-# Env: frame_e conda env (python 3.11.9, numpy 1.26.4, scipy 1.11.4, MKL BLAS).
-# PYTHONNOUSERSITE=1 keeps packages in ~/.local out of the environment.
+# Conda env: frame_e
+#   conda create -n frame_e -c conda-forge python=3.11.9 numpy=1.26.4 \
+#     scipy=1.11.4 scikit-learn=1.5.1 matplotlib=3.10 networkx=3.4.2 \
+#     pyproj=3.6.1 shapely=2.0.6 fiona=1.10.1 cartopy=0.24.1 \
+#     "blas=*=mkl" mkl-service
+#   pip install git+https://github.com/NovembreLab/frame@98abf4b   # FRAME 1.0.0
+#   (run with PYTHONNOUSERSITE=1 so packages in ~/.local are not picked up)
 
 set -euo pipefail
 

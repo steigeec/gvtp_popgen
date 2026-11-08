@@ -5,6 +5,8 @@
 import pandas as pd
 import argparse
  
+
+BASE_DIR = "/private/groups/meyerlab/esteiger"
 #Arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("fixed_af", type=float, help="frequency of allele to be considered fixed, for low coverage data it is not recommended to use 1")
@@ -15,7 +17,7 @@ args = parser.parse_args()
 outfile = args.pop1 + ".mafs"
 fixed_af = args.fixed_af
 pop1=pd.read_csv(args.pop1 + ".mafs", sep="\t", skiprows=[1], dtype={"chromo": str, "position": int, "major": str, "minor": str, "ref": str, "knownEM": float, "nInd": int})
-polysites=pd.read_csv("/private/groups/meyerlab/esteiger/variant_calling/angsd/postParalog.sites.gz",sep="\t",header=None,names=["chromo","position"], dtype=str)
+polysites=pd.read_csv(f"{BASE_DIR}/variant_calling/angsd/postParalog.sites.gz",sep="\t",header=None,names=["chromo","position"], dtype=str)
 polysites["position"]=pd.to_numeric(polysites["position"], errors="coerce")
 polysites=polysites.dropna().astype({"chromo": str, "position": int})
  

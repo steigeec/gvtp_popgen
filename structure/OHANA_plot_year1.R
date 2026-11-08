@@ -1,6 +1,13 @@
 #!/usr/bin/env Rscript
+# OHANA_plot_year1.R
+# Plot OHANA results for the year1 subset: Evanno delta K, NMI against known
+# populations and sub-localities, ancestry bar plots per K and ancestry pie maps.
+# Run in structure/OHANA/ after launch_ohana_year1_strauss.sh (needs year1/best_runs.txt).
+# R library: BASE_DIR/software/R_libs/
+# Usage: Rscript OHANA_plot_year1.R
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs/")
+.libPaths(file.path(BASE_DIR, "software/R_libs/"))
 library(ggplot2)
 library(tidyr)
 library(scatterpie)
@@ -29,11 +36,10 @@ gvtp_theme <- theme_bw() +
 proj <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
 
 
-# add shapefile for 
 # Define the cropping extent
 crop_extent <- st_bbox(c(xmin = -120.7, xmax = -120.1, ymin = 34.4, ymax = 34.9), crs = st_crs(proj))
 # crop the coast off
-CA<-st_read("/private/groups/meyerlab/esteiger/env/study_area/GVTP_clip.shp")
+CA<-st_read(file.path(BASE_DIR, "env/study_area/GVTP_clip.shp"))
 CA<-st_make_valid(CA)
 crop_extent_sf <- st_as_sfc(st_bbox(crop_extent))
 CA <- st_crop(CA, crop_extent)
@@ -41,17 +47,11 @@ CA<- st_simplify(CA)
 
 
 # Read in the DEM
-DEM <- rast("/private/groups/meyerlab/esteiger/env/tranquillon_mountain_30m.dem")
+DEM <- rast(file.path(BASE_DIR, "env/tranquillon_mountain_30m.dem"))
 crs(DEM) <- "EPSG:26710"
 DEM_transformed <- project(DEM, proj)
 
-# Calculate Evanno's K
-
-
-# First, I need to compute the delta K� 
-
-
-# Suppose your data has columns: iter, duration, log_likelihood, delta_lle, K
+# Evanno's delta K
 year1 <- read.table("year1/log_likelihoods_across_runs.txt", header=TRUE, sep="\t")
 
 
@@ -63,14 +63,14 @@ summary <- year1 %>%
     sd_lnL = sd(loglik))
 
 
-# Compute ?K (Evanno method)
+# Delta K (Evanno method)
 stats <- summary %>%
   mutate(lnL_lead = lead(mean_lnL),
     lnL_lag  = lag(mean_lnL),
     delta_K  = abs(lnL_lead - 2 * mean_lnL + lnL_lag) / sd_lnL)
 
 
-# Plot ?K
+# Plot delta K
 jpeg("year1/deltaK_year1.jpg")
 ggplot(stats, aes(x=K, y=delta_K)) +
   geom_line() +
@@ -82,8 +82,6 @@ dev.off()
 
 best_k <- stats$K[which.max(stats$delta_K)]
 cat("Best K according to Evanno's method:", best_k, "\n")
-#     Best one 9 July is 4
-#     Best one 31 Oct is 3 
 
 
 label_vec <- c(
@@ -96,14 +94,10 @@ label_vec <- c(
 )
 
 
-# Automatic ancestry-component coloring: for a given K, figure out which
-# known population each component (C1..CK) is most tied to, then color it
-# via popcolors. Strauss (by far the largest population) tends to split
-# into multiple locally-dominant components as K increases; only the
-# single largest of those keeps the Strauss popcolor (priority 1). Any
-# additional Strauss-dominant components are colored by geography: the
-# most-western one (lowest mean longitude) is treated as West Tranquillon
-# Mtn -> black, and any others -> grey.
+# Ancestry-component colouring: each component takes the colour of the known
+# population it is most tied to. Strauss tends to split into several components
+# as K rises; only the largest keeps the Strauss colour, the most western other
+# one (West Tranquillon Mtn) is black, and any others are grey.
 popcolors <- c(
   CDFW = "#e69f00",
   CDFW_MR = "#e69f00",
@@ -140,11 +134,9 @@ assign_ancestry_colors <- function(dat, k) {
     claimed[top] <- TRUE
   }
 
-  # Any further components still dominant within Strauss reflect a
-  # within-Strauss split. The most-western one is West Tranquillon Mtn ->
-  # black; any others each get their own shade of grey (darkest = more
-  # western, lightest = more eastern) so distinct sub-splits stay visually
-  # distinguishable instead of collapsing into one flat grey.
+  # Further Strauss-dominant components are within-Strauss splits: the most
+  # western is West Tranquillon Mtn (black), others get shades of grey (darker
+  # = more western) so separate splits stay distinguishable.
   other_strauss <- which(dominant_pop == "Strauss" & !claimed)
   if (length(other_strauss) > 0) {
     mean_long <- vapply(other_strauss, function(c) mean(dat$Long[assignment == c], na.rm=TRUE), numeric(1))
@@ -177,8 +169,7 @@ assign_ancestry_colors <- function(dat, k) {
 }
 
 
-# Always read in the best-likelihood run (per best_runs.txt) for each K,
-# rather than hard-coding which iteration was best.
+# Read the best-likelihood run for each K from best_runs.txt
 best_runs <- read.table("year1/best_runs.txt", header=FALSE, sep="\t",
                          col.names=c("K", "iteration", "loglik"))
 
@@ -194,7 +185,7 @@ for (k in sort(unique(best_runs$K))) {
 }
 
 
-order<-read.table("/private/groups/meyerlab/esteiger/mapping/merged/bamlist_year1.txt", header=F)
+order<-read.table(file.path(BASE_DIR, "mapping/merged/bamlist_year1.txt"), header=F)
 order$index <- seq(1, nrow(order))
 order$V1 <- sub(".*/([^/]+)$", "\\1", order$V1)
 to_remove <- c("_rmdup.bam")
@@ -202,34 +193,31 @@ order$V1 <- gsub(paste(to_remove, collapse = "|"), "", order$V1)
 
 
 #What's the population info for these samples?
-pop<-read.table("/private/groups/meyerlab/esteiger/field_data.txt", header=T, sep="\t")
+pop<-read.table(file.path(BASE_DIR, "field_data.txt"), header=T, sep="\t")
 pop<-unique(pop)
 pop<-merge(pop[,c("SampleID", "Year", "Lat", "Long", "Cov", "Clusters", "OHANA_order")], order, by.x="SampleID", by.y="V1", all.y=F)
 my_pop<-pop[order(pop$index),]
 my_pop$Clusters <- factor(my_pop$Clusters, levels=c("VAFB_Lion_Head", "VAFB_Arguello", "Dangermond", "Point_Conception", "Strauss", "CDFW"))
 
 
-#merge pop data together with q matrices
+# Merge population data with q matrices
 for (k in sort(unique(best_runs$K))) {
   qk <- get(paste0("q_", k))
   dat <- cbind(my_pop, qk)
   dat <- dat[!is.na(dat$Clusters),]
-  # Sort by environ variable of interest and then re-index
+  # Sort by sub-locality and re-index
   dat <- dat[order(dat$OHANA_order),]
   dat$index <- seq(1, nrow(dat))
   assign(paste0("data_", k), dat)
-  #hoizontalto vertical
+  # Wide to long
   assign(paste0("data_long_", k), gather(dat, Cluster, Percentage, all_of(paste0("C", seq_len(k))), factor_key=T))
 }
 
 
-# Evaluate how well the inferred clusters at each K recover the known
-# field populations (Clusters), as a complement to Evanno's delta K.
-# NMI is computed from scratch (base R) since neither mclust nor aricode
-# is available in the project's R library. ARI was tried too but dropped:
-# it collapses toward 0 once the ground truth gets finer-grained than the
-# clustering (e.g. the 30-locality OHANA_order comparison below), which
-# makes it uninformative rather than just conservative there.
+# NMI between the inferred clusters at each K and the known field populations,
+# as a complement to Evanno's delta K. Computed in base R (mclust and aricode
+# are not in the project library). ARI was dropped because it collapses toward
+# 0 when the ground truth is finer than the clustering.
 
 normalized_mutual_info <- function(known, assignment) {
   tab <- table(known, assignment)
@@ -263,17 +251,10 @@ for (k in sort(unique(best_runs$K))) {
   ))
 }
 
-# The coarse 6-population ground truth treats each of the 6 field
-# populations (e.g. Strauss/Tranquillon Mtn) as a single label, so a K that
-# correctly resolves real sub-structure within one of them looks like a
-# concordance *penalty* rather than a reward. field_data.txt's OHANA_order
-# field already encodes real, field-verified sub-locality codes within each
-# population (e.g. Point_Conception has 51/54/66/70, Strauss has many more,
-# reflecting its much larger and more spatially spread-out sampling), so use
-# it directly as a finer-grained ground truth instead of an ad hoc
-# lat/long split. Coarse concordance saturating while OHANA_order
-# concordance keeps climbing would indicate the extra K is resolving real
-# sub-locality structure rather than overfitting noise.
+# The 6 field populations treat sub-structure within a population as error, so
+# NMI is also computed against OHANA_order, the field-verified sub-locality
+# codes. Coarse NMI saturating while OHANA_order NMI keeps rising indicates the
+# extra K resolves real sub-locality structure rather than noise.
 concordance_refined <- data.frame(K = integer(), NMI = numeric())
 for (k in sort(unique(best_runs$K))) {
   dat <- get(paste0("data_", k))
@@ -422,7 +403,7 @@ print(P8 + theme(strip.text=element_text(size=75)))
 dev.off()
 
 
-# show the complete stack
+# Complete stack
 jpeg("year1/ohana_stack.jpg", width=6000, height=5200)
 print(P2 / P3 / P4 / P5 / P6 / P7 / P8 + plot_layout(heights = c(1, 1, 1, 1, 1, 1, 1)))
 dev.off()
@@ -434,8 +415,7 @@ dev.off()
 
 
 
-# Plot as pie charts on the landscape--INCOMPLETE
-#average ancestry components by site
+# Pie charts of mean ancestry per site (incomplete)
 pie2 <- data_2 %>%
 	dplyr::group_by(Clusters) %>%
 dplyr::summarise(A=mean(as.numeric(C1)), B=mean(as.numeric(C2)), Long=mean(Long), Lat=mean(Lat))

@@ -1,4 +1,6 @@
 #!/bin/bash
+# Array task: find SNPs in LD (r2 >= threshold) with candidate genes on one scaffold (ld_scan_scaffold.py).
+# Usage: submitted by launch_ld_scan.sh with <scaffold_list> <r2_threshold>
 
 #SBATCH --job-name=ld_scan
 #SBATCH --partition=long
@@ -6,9 +8,11 @@
 
 set -euo pipefail
 
-LD_DIR=/private/groups/meyerlab/esteiger/variant_calling/ngsLD
-WORKDIR=/private/groups/meyerlab/esteiger/selection/gemma/ld_curation
-SCAN=/private/groups/meyerlab/esteiger/gvtp_popgen/selection/gemma/ld_scan_scaffold.py
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+LD_DIR=${BASE_DIR}/variant_calling/ngsLD
+WORKDIR=${BASE_DIR}/selection/gemma/ld_curation
+SCAN=${BASE_DIR}/gvtp_popgen/selection/gemma/ld_scan_scaffold.py
 
 cd "$WORKDIR"
 mkdir -p linked_positions logs

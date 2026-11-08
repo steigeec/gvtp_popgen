@@ -1,16 +1,18 @@
 #!/usr/bin/env Rscript
-
+# Genome-wide sliding-window Fst plot for each population pair (input from window_Fst.sh).
 # Usage: Rscript plot_window_Fst.R [window_dir] [pair_table]
-args <- commandArgs(trailingOnly = TRUE)
-window_dir <- if (length(args) >= 1) args[1] else "/private/groups/meyerlab/esteiger/selection/window_Fst"
-pair_table <- if (length(args) >= 2) args[2] else "/private/groups/meyerlab/esteiger/structure/Fst/populations/pairwise_auto/pairwise_Fst_populations.txt"
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs")
+args <- commandArgs(trailingOnly = TRUE)
+window_dir <- if (length(args) >= 1) args[1] else file.path(BASE_DIR, "selection/window_Fst")
+pair_table <- if (length(args) >= 2) args[2] else file.path(BASE_DIR, "structure/Fst/populations/pairwise_auto/pairwise_Fst_populations.txt")
+
+.libPaths(file.path(BASE_DIR, "software/R_libs"))
 library(data.table)
 library(dplyr)
 library(ggplot2)
 
-FAI <- "/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked.fai"
+FAI <- file.path(BASE_DIR, "genome/DEINVI_genome.fasta.masked.fai")
 
 froggy_theme <- theme(
   axis.title = element_text(size=65),
@@ -24,10 +26,7 @@ froggy_theme <- theme(
   plot.background = element_blank()
 )
 
-# Genome-wide chromosome order/offsets and alternating grey/black coloring,
-# matching the Manhattan plot convention in
-# /private/groups/meyerlab/esteiger/gvtp_popgen/selection/gemma/find_outliers.R
-# (scaffolds ordered by descending length, colors alternate per scaffold).
+# Scaffolds ordered by descending length with alternating colors, as in the find_outliers.R Manhattan plots.
 chroms <- fread(FAI, select = 1:2, col.names = c("chr", "len"))
 chroms <- chroms %>% arrange(desc(len))
 chroms$start <- cumsum(c(0, head(chroms$len, -1)))
@@ -45,9 +44,7 @@ for (i in seq_len(nrow(pairs))) {
     next
   }
 
-  # realSFS fst stats2 writes a 4-name header (region chr midPos Nsites) for 5
-  # actual data columns (region, chr, midPos, Nsites, Fst); fread would otherwise
-  # shift every column name right by one. Skip the bad header and name explicitly.
+  # realSFS fst stats2 header has 4 names for 5 columns, so skip it and name columns explicitly.
   win <- fread(infile, skip = 1, col.names = c("region", "chr", "midPos", "Nsites", "Fst"))
   win <- win[is.finite(Fst) & chr %in% chroms$chr]
   if (nrow(win) == 0) {

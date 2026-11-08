@@ -5,14 +5,20 @@
 #SBATCH --cpus-per-task=40
 #SBATCH --output=logs/PruneGraph_%A_%a.log
 
-export TMPDIR=/private/groups/meyerlab/esteiger/tmp/
+# prune_graph on one ngsLD output (array task): drop linked sites
+# (r2 >= 0.4 within 50 kb). Scaffolds with no linked pairs keep all sites.
+# Usage: submitted by launch_PruneGraph.sh
 
-WORKDIR=/private/groups/meyerlab/esteiger/variant_calling/ngsLD
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+export TMPDIR=${BASE_DIR}/tmp/
+
+WORKDIR=${BASE_DIR}/variant_calling/ngsLD
 cd "$WORKDIR"
 mkdir -p pos
 
-PG=/private/groups/meyerlab/esteiger/software/prune_graph/target/release/prune_graph
-SITES_DB=/private/groups/meyerlab/esteiger/variant_calling/angsd/postParalog_MAF.sites
+PG=${BASE_DIR}/software/prune_graph/target/release/prune_graph
+SITES_DB=${BASE_DIR}/variant_calling/angsd/postParalog_MAF.sites
 
 FILELIST=$1
 FILE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$FILELIST")

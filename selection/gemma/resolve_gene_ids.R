@@ -1,22 +1,15 @@
 #!/usr/bin/env Rscript --vanilla
 
-# Resolves a raw list of gene/transcript-style IDs (one per line, from stdin)
-# to their real gene IDs, and prints the deduplicated, sorted, dot-suffixed
-# gene list to stdout — a drop-in replacement for `sort -u | sed "s/$/\./"`.
-#
-# The upstream regex extraction (grep -oE "MSTRG\.[0-9]+...|g[0-9]+|...") on
-# the VCF ANN field assumes every match is already a gene ID. That's true most
-# of the time, but for some annotation sources the transcript_id is numbered
-# independently from its parent gene_id (e.g. transcript "g14399.t1" belongs
-# to gene "g4525", not "g14399"), and for transdecoder models the extracted
-# prefix ("DEINVI_00006.26586") is a truncated transcript_id, not a gene_id
-# at all. Those entries were being silently dropped from every downstream
-# step (orthologs, GO annotation, GO enrichment) instead of counted against
-# their real gene. This resolves them via the reference GFF first.
+# Maps IDs extracted from the SnpEff ANN field (one per line, stdin) to gene IDs
+# using the reference GFF, and prints the sorted, deduplicated, dot-suffixed
+# gene list to stdout. Needed because some transcript IDs are not numbered
+# after their parent gene (e.g. g14399.t1 belongs to gene g4525).
 #
 # Usage: cat raw_ids.txt | Rscript resolve_gene_ids.R > gene_list.txt
 
-GFF <- "/private/groups/meyerlab/esteiger/genome/remove_duplicates_rm_internalstops_longest_isoform.gff"
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
+
+GFF <- file.path(BASE_DIR, "genome/remove_duplicates_rm_internalstops_longest_isoform.gff")
 
 gff_all <- read.table(GFF, sep = "\t", header = FALSE, quote = "", comment.char = "#",
                       stringsAsFactors = FALSE,
@@ -26,9 +19,7 @@ gff_all <- read.table(GFF, sep = "\t", header = FALSE, quote = "", comment.char 
 gff_gene_ids <- unique(sub(".*ID=([^;]+).*", "\\1",
                             gff_all$attributes[gff_all$feature == "gene"]))
 
-# tx2gene from the mRNA lines' own ID=/Parent= attributes, NOT the gene_id=
-# attribute (which can be stale on either the gene or mRNA line — see
-# lookup_by_gene_id.py header for the same underlying issue in the GFF).
+# tx2gene uses the mRNA ID=/Parent= attributes; the gene_id= attribute can be stale in this GFF.
 mrna_rows <- gff_all[gff_all$feature == "mRNA", ]
 tx_ids <- sub(".*ID=([^;]+).*", "\\1", mrna_rows$attributes)
 gene_ids_col <- sub(".*Parent=([^;]+).*", "\\1", mrna_rows$attributes)

@@ -1,34 +1,16 @@
 #!/usr/bin/env python3
 """
-Rebuilds <var_name>/snp_to_gene_<var_name>.tsv: for every outlier SNP in
-outliers_<var_name>.ann.INFO, the set of genes SnpEff actually assigned it
-to -- consumed by annotated_manhattan.R / select_peak_labels.R to label a
-Manhattan peak with the gene(s) tied to its own retained SNP(s), instead of
-a coordinate-range overlap (which misses genes reached only through
-SnpEff's upstream/downstream/intergenic flanking window -- the majority
-case here, since most outlier SNPs are intergenic).
+Builds <var_name>/snp_to_gene_<var_name>.tsv: for each outlier SNP in
+outliers_<var_name>.ann.INFO, the genes SnpEff assigned it to. Used by
+annotated_manhattan.R and select_peak_labels.R to label peaks.
 
-Recreates a script by this name referenced in those two R scripts' headers
-that no longer exists on disk (the on-disk snp_to_gene_<var>.tsv files were
-last written 2026-07-14 with no surviving generator). Reuses the same
-GENE_TOKEN_RE / load_gff_resolver / resolve_to_gene / load_linked_positions
-helpers curate_intergenic_by_ld.py and compute_gene_snp_stats.py already
-use, so a SNP's gene set here matches what those scripts would credit it
-with: genic and bounded upstream/downstream_gene_variant annotations are
-kept unconditionally; a SNP whose ONLY annotation is intergenic_region
-(unbounded nearest-flanking-gene distance) only credits that gene if the
-SNP's own position is in the gene's LD-linked position set (r2 >=
---r2-threshold), per the precomputed ld_curation/ scan.
+Uses the same gene-crediting rules as curate_intergenic_by_ld.py: genic and
+upstream/downstream annotations are always kept; a SNP annotated only as
+intergenic_region credits the flanking gene only if the SNP is in LD with it
+(r2 >= --r2-threshold, from the ld_curation/ scan).
 
-Gene IDs are read from ONLY the Gene_ID subfield (pipe-field 5, i.e.
-parts[4]) of each ANN entry -- never the whole entry text. AUGUSTUS
-transcript IDs (Feature_ID, pipe-field 7) commonly retain a raw
-"g<number>.t<N>" stem even for genes since renamed to "IDmodified-gene-N",
-and scanning the whole entry lets that stem get matched as a spurious
-extra gene call that can collide with a real, unrelated gene elsewhere in
-the genome that kept that same "g<number>" id (confirmed: this is exactly
-how SCPL13 and UGT73E1 -- on different scaffolds -- previously ended up
-labeled on the same BIO15 peak).
+Gene IDs are read only from the ANN Gene_ID subfield (field 5); Feature_ID
+can carry old AUGUSTUS "g<number>.t<N>" stems that would match unrelated genes.
 
 Usage:
   python3 build_snp_gene_map.py <var_name> \\
@@ -41,8 +23,10 @@ import os
 import sys
 from collections import defaultdict
 
-sys.path.insert(0, "/private/groups/meyerlab/esteiger/gvtp_popgen/selection/gemma")
+sys.path.insert(0, f"{BASE_DIR}/gvtp_popgen/selection/gemma")
 from curate_intergenic_by_ld import GENE_TOKEN_RE, load_gff_resolver, resolve_to_gene, load_linked_positions
+
+BASE_DIR = "/private/groups/meyerlab/esteiger"
 
 
 def main():

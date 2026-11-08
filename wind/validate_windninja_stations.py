@@ -10,9 +10,12 @@ Input:  BASE_DIR/wind/windninja_landfire/region/*_vel.asc, *_ang.asc
         BASE_DIR/wind/hrrr/validate_{PTGC1,VGN,TQS}_matched.csv
 Output: windninja_landfire/region/{station}_hrrr_vs_windninja_vs_obs.csv,
         BASE_DIR/wind/windninja_station_validation_summary.csv
-Env:    needs gdallocationinfo on PATH (windninja conda env)
+Conda env: herbie
+  conda create -n herbie -c conda-forge python=3.11 herbie-data=2026.3.0
+  (Herbie also brings pandas, xarray, cfgrib and scipy)
+Also needs gdallocationinfo on PATH (from the windninja env's GDAL).
 Usage:  PATH=/private/home/esteiger/miniconda3/envs/windninja/bin:$PATH \
-          python3 validate_windninja_stations.py
+          /private/home/esteiger/miniconda3/envs/herbie/bin/python3 validate_windninja_stations.py
 """
 import glob
 import re

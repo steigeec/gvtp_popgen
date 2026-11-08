@@ -1,21 +1,13 @@
 #!/usr/bin/env python3
 """
 Pick individuals with an unambiguous PC1/PC2 group in each candidate block on
-DEINVI_00006, for the read-level breakpoint check (breakpoint_reads.sh /
-breakpoint_summary.py).
+DEINVI_00006, for breakpoint_reads.sh / breakpoint_summary.py.
 
-For each block: samples are split into 3 groups (k-means on PC1 and PC2, each
-scaled by sqrt(% variance explained), as in pc_cluster_consistency.py) in
-every window of the block. The core window's split defines the groups; in
-every other window, group labels are matched to the core's by maximum overlap
-(Hungarian assignment), so PC1/PC2 swaps and label order don't matter. A
-sample is "consistent" if it sits in its core group in >= MIN_CONSISTENCY of
-the block's windows. Groups are ordered by mean PC1 at the core window: A
-(low), Het (middle), B (high) -- which homozygous group matches the
-reference assembly is unknown until the read check.
-
-Per block and group, every consistent sample (or the TOP_N with the highest coverage
-if TOP_N is set; Cov in env_var.txt) with an existing BAM is kept.
+Per window, samples are split into 3 groups by k-means on PC1 and PC2 (as in
+pc_cluster_consistency.py); labels are matched to the core window's groups by
+maximum overlap (Hungarian assignment). A sample is "consistent" if it is in
+its core group in >= MIN_CONSISTENCY of the block's windows. Groups are named
+by mean PC1 at the core window: A (low), Het (middle), B (high).
 
 Output: OUT_DIR/breakpoint_samples.tsv (block, group, sample, consistency, cov)
 """
@@ -27,16 +19,17 @@ import pandas as pd
 from scipy.optimize import linear_sum_assignment
 from sklearn.cluster import KMeans
 
-PREFIX   = "/private/groups/meyerlab/esteiger/inversions/all_localities/DEINVI_00006_GL_maf5_flipped"
-ENV      = "/private/groups/meyerlab/esteiger/env_var.txt"
-BAM_DIR  = "/private/groups/meyerlab/esteiger/mapping/merged"
-OUT_DIR  = "/private/groups/meyerlab/esteiger/inversions/breakpoints"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+PREFIX   = f"{BASE_DIR}/inversions/all_localities/DEINVI_00006_GL_maf5_flipped"
+ENV      = f"{BASE_DIR}/env_var.txt"
+BAM_DIR  = f"{BASE_DIR}/mapping/merged"
+OUT_DIR  = f"{BASE_DIR}/inversions/breakpoints"
 MIN_CONSISTENCY = 0.9
 TOP_N    = None       # max samples per block and group (None = every consistent sample)
 STEP     = 5            # use every 5th window (50 kb spacing)
 
-# block name: (start Mb, end Mb, core window Mb) -- spans from the
-# three-group block extents (all-locality and Strauss-only runs agree)
+# block name: (start Mb, end Mb, core window Mb)
 BLOCKS = {
     "INV1_45.5-49.1":   (45.5, 49.1, 47.5),
     "blk_16.0-21.4":    (16.0, 21.4, 20.3),

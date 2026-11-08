@@ -7,9 +7,14 @@
 #SBATCH --output=/private/groups/meyerlab/esteiger/demography/ANGSD-Ne/logs/%x.out
 #SBATCH --error=/private/groups/meyerlab/esteiger/demography/ANGSD-Ne/logs/%x.err
 
+# Sum Watterson's theta and sites over contigs per population and convert to
+# Ne = theta_W / (4 mu). Writes watterson_theta_Ne_summary.tsv.
+
 set -euo pipefail
 
-OUTDIR=/private/groups/meyerlab/esteiger/demography/ANGSD-Ne
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+OUTDIR=${BASE_DIR}/demography/ANGSD-Ne
 MU=1e-8   # per site per generation; Asteraceae rate (Strasburg & Rieseberg 2008,
           # Helianthus annuus/petiolaris; Senecio chrysanthemifolius, ~1e-8)
 
@@ -28,8 +33,7 @@ for POP in "${POPS[@]}"; do
     fi
     # pestPG columns (no header token on col1): ...  tW  tP  tF  tH  tL  Tajima  fuf  fud  fayh  zeng  nSites
     # tW = per-window sum of Watterson's theta; nSites = sites with data in window.
-    # Sum both across all windows (here: whole contigs, since do_stat was run
-    # without -win/-step) to get genome-wide totals.
+    # windows are whole contigs (do_stat run without -win/-step); sum for genome-wide totals
     read sum_tW sum_nSites <<< "$(awk 'NR>1 {tw+=$4; ns+=$14} END{print tw, ns}' "$PESTPG")"
 
     theta_w_per_site=$(awk -v tw="$sum_tW" -v ns="$sum_nSites" 'BEGIN{printf "%.10g", tw/ns}')

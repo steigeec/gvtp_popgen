@@ -1,17 +1,11 @@
 #!/bin/bash
-# =============================================================================
-# rohan_phase1.sh — SLURM array: ROHan main-run pass 1 (MCMC het estimation)
-#
-# One array task per remaining sample.  Task list read from rohan_tasks.tsv,
-# rebuilt each time by launch_rohan.sh (only samples still missing a valid
-# summary.txt are included).  Submit via launch_rohan.sh or manually:
+# rohan_phase1.sh
+# SLURM array, ROHan pass 1 (MCMC heterozygosity estimation, --nohmm), one task
+# per sample in rohan_tasks.tsv. Submit via launch_rohan.sh or:
 #   sbatch --array=1-N%40 rohan_phase1.sh
 #
-# Skip check validates the existing .hEst.gz with `gzip -t`, not just
-# non-empty (-s) — a file left behind by a job that was killed mid-write
-# (e.g. hit the SLURM time limit) is non-empty but truncated, and silently
-# treating it as "done" would feed pass 2 a corrupt input.
-# =============================================================================
+# Existing hEst.gz files are checked with gzip -t, since a job killed mid-write
+# leaves a non-empty but truncated file.
 
 #SBATCH --job-name=rohan_p1
 #SBATCH --partition=long
@@ -24,10 +18,12 @@
 
 set -euo pipefail
 
-ROHAN=/private/groups/meyerlab/esteiger/software/rohan/bin/rohan
-REF=/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked
-SCAFFOLDS=/private/groups/meyerlab/esteiger/diversity/ROH/ROHan/scaffolds_1mb_names.txt
-TASK_FILE=/private/groups/meyerlab/esteiger/diversity/ROH/ROHan/rohan_tasks.tsv
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+ROHAN=${BASE_DIR}/software/rohan/bin/rohan
+REF=${BASE_DIR}/genome/DEINVI_genome.fasta.masked
+SCAFFOLDS=${BASE_DIR}/diversity/ROH/ROHan/scaffolds_1mb_names.txt
+TASK_FILE=${BASE_DIR}/diversity/ROH/ROHan/rohan_tasks.tsv
 CHAINS=10000
 THREADS=8
 

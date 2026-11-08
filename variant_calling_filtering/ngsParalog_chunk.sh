@@ -7,10 +7,15 @@
 #SBATCH --time=168:00:00
 #SBATCH --output=/private/groups/meyerlab/esteiger/variant_calling/ngsParalog/logs/chunk_%A_%a.log
 
+# ngsParalog calcLR on one chunk of sites (array task), via samtools mpileup.
+# Usage: submitted by launch_ngsParalog.sh
+
+BASE_DIR=/private/groups/meyerlab/esteiger
+
 CHUNKS_DIR="$1"
-BAMLIST="/private/groups/meyerlab/esteiger/mapping/merged/bamlist.txt"
-NGSPARALOG="/private/groups/meyerlab/esteiger/software/ngsParalog/ngsParalog"
-SAMTOOLS="/private/groups/meyerlab/esteiger/software/samtools/bin/samtools"
+BAMLIST="${BASE_DIR}/mapping/merged/bamlist.txt"
+NGSPARALOG="${BASE_DIR}/software/ngsParalog/ngsParalog"
+SAMTOOLS="${BASE_DIR}/software/samtools/bin/samtools"
 
 mapfile -t chunks < <(find "${CHUNKS_DIR}" -name "sites_chunk_*" -not -name "*.*" | sort)
 sites="${chunks[$SLURM_ARRAY_TASK_ID]}"
@@ -22,7 +27,7 @@ if [ -f "$outfile" ]; then
   exit 0
 fi
 
-# mkdir is atomic — only one task can acquire the lock
+# mkdir is atomic, so only one task can take the lock
 if ! mkdir "$lockdir" 2>/dev/null; then
   echo "Another task is processing ${sites}, skipping."
   exit 0
@@ -39,13 +44,12 @@ if [ -f "$pileup" ]; then
 else
   awk '{print $1 "\t" ($2-1) "\t" $2}' "$sites" > "$bed"
   EXPECTED_LINES=$(wc -l < "$sites")
-  cd /private/groups/meyerlab/esteiger/mapping/merged
-  # -minQ 20 in ngsParalog recommended on github
-  # -q 0 -Q 0 for mpileup recommended on ngsParalog github
-  # Writing to a temp file avoids a pipe deadlock: with 842 samples, a single
-  # 	high-depth pileup line can exceed the 64KB pipe buffer, causing samtools and
-  # 	ngsParalog to block on each other indefinitely.
-  # -d 110000: Tyler uses this value to avoid samtools silently downsampling high-depth sites
+  cd ${BASE_DIR}/mapping/merged
+  # -minQ 20 in ngsParalog, as recommended on the ngsParalog GitHub
+  # -q 0 -Q 0 for mpileup, as recommended on the ngsParalog GitHub
+  # pileup goes to a file, not a pipe: with 842 samples one line can exceed the
+  #   64 KB pipe buffer and samtools and ngsParalog deadlock
+  # -d 110000 so samtools does not silently downsample high-depth sites
   "$SAMTOOLS" mpileup \
     --ff UNMAP,QCFAIL,DUP \
     -q 0 -Q 0 -d 110000 \
@@ -53,7 +57,7 @@ else
     -l "$bed" \
     > "$pileup" &
   SAMTOOLS_PID=$!
-  # If samtools stalls within 9 lines of completion for 5+ hours, assume pileup is done
+  # samtools can stall at the very end: if within 9 lines of expected and idle 5 h, treat as done
   while kill -0 "$SAMTOOLS_PID" 2>/dev/null; do
     sleep 900
     CURRENT_LINES=$(wc -l < "$pileup" 2>/dev/null || echo 0)

@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
 """
 Long-read check of the INV1 region (DEINVI_00006 ~42-51 Mb) in the DEINVI
-reference individual, from the chr-6-only BAMs written by longread_chr6.sh.
+reference individual, using the chr-6 BAMs written by longread_chr6.sh.
 
-1. Junctions: split reads whose two parts (primary + SA part) both align
-   >= MIN_PART bp with MAPQ >= MIN_MAPQ, on opposite strands (inversion
-   signature), > 20 kb apart, with >= 1 end in REGION. Each part's junction
-   coordinate is the alignment end next to its clipped side. Junctions are
-   clustered at CLUSTER_BP resolution; clusters with >= MIN_READS reads kept.
-2. Breakpoint scan: every SCAN_STEP bp across REGION, count reads that
-   "break" there (>= 1 kb clipped, clip boundary within +-1 kb) vs reads that
-   "span" it (aligned >= 5 kb on both sides). Positions are flagged when the
-   break count exceeds the 99th percentile of the same count at BASELINE_N
-   random positions outside REGION on the scaffold.
+1. Junctions: opposite-strand split reads (both parts >= MIN_PART bp, MAPQ
+   >= MIN_MAPQ, > MIN_DIST apart, >= 1 end in REGION), clustered at CLUSTER_BP.
+2. Breakpoint scan: every SCAN_STEP bp across REGION, reads that break there
+   vs. reads that span it, flagged against the 99th percentile of BASELINE_N
+   random positions outside REGION.
 
 Usage: longread_inv1.py <bam> [<bam> ...]
 """

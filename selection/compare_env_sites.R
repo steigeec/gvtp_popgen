@@ -1,20 +1,23 @@
 #!/usr/bin/env Rscript
 # Compare environmental conditions across all localities for variables
 # that have peak-filtered (40000_3) GWAS outliers.
-# Colour / label scheme matches plot_TajD_extreme_combined.R.
+# Output: env_compare_sites_40000_3.jpg
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs")
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
+
+.libPaths(file.path(BASE_DIR, "software/R_libs"))
 library(data.table)
 library(dplyr)
 library(ggplot2)
 
-GEMMA_DIR <- "/private/groups/meyerlab/esteiger/selection/gemma"
-OUTDIR    <- "/private/groups/meyerlab/esteiger/gvtp_popgen/selection"
+GEMMA_DIR <- file.path(BASE_DIR, "selection/gemma")
+OUTDIR    <- file.path(BASE_DIR, "gvtp_popgen/selection")
 
 # ── Population assignments ────────────────────────────────────────────────────
 fam <- read.table(file.path(GEMMA_DIR, "postParalog_MAF_4x_GLimp_clean.fam"),
                   header = FALSE, stringsAsFactors = FALSE)
 
+# 13 individuals with untrustworthy coordinates (Location "Strauss" but genetic cluster elsewhere)
 EXCLUDE <- c("4548", "4549", "4550", "4551", "4552", "4553", "4554",
              "4555", "4556", "4557", "4559", "4561", "4562")
 keep    <- !as.character(fam$V2) %in% EXCLUDE
@@ -59,7 +62,7 @@ message(length(present_vars), " variables with 40000_3 outliers: ",
         paste(present_vars, collapse = ", "))
 if (length(present_vars) == 0) stop("No 40000_3 outlier files found.")
 
-# ── Colour / label scheme (identical to TajD plots) ──────────────────────────
+# ── Colour / label scheme ────────────────────────────────────────────────────
 site_labels <- c(
     "CDFW"             = "CDFW",
     "Dangermond"       = "Dangermond",
@@ -82,7 +85,7 @@ pop_colors <- c(
 # Population display order: group VAFB sites; otherwise alphabetical by internal name
 pop_order <- c("VAFB_Lion_Head", "VAFB_Arguello", "Strauss",
                "Dangermond", "Point_Conception", "CDFW")
-pop_order <- intersect(pop_order, unique(cluster))  # keep only pops present in data
+pop_order <- intersect(pop_order, unique(cluster))
 
 # ── Build long-format data frame ──────────────────────────────────────────────
 env_long <- bind_rows(lapply(present_vars, function(vn) {

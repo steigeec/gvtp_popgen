@@ -9,27 +9,27 @@
 #SBATCH --output=/private/groups/meyerlab/esteiger/inversions/longreads/longread_%x_%j.log
 
 # Align the DEINVI reference individual's long reads (SRA) to the genome and
-# keep ONLY the alignments on DEINVI_00006, to check the candidate inversion
+# keep only the alignments on DEINVI_00006, to check the candidate inversion
 # breakpoints (e.g. ~45.3 and ~49.3 Mb for INV1).
 #
 # Usage: sbatch -J <name> longread_chr6.sh <SRR accession> <minimap2 preset>
 #   sbatch -J hifi_chr6 longread_chr6.sh SRR27077960 map-hifi   # PacBio HiFi, SRX22767383
 #   sbatch -J ont_chr6  longread_chr6.sh SRR27077961 map-ont    # ONT PromethION, SRX22767382
 #
-# Space: the .sra (45 / 89 GB) and FASTQ (~150-200 GB) live ONLY on the
-# compute node's local disk (/data/tmp, ~14 TB) and are deleted on exit.
-# Nothing is written to $HOME -- the SRA toolkit's default download location
-# (~/ncbi) would overflow the home quota -- so prefetch gets an explicit
-# output dir and runs from the local dir. Kept: <SRR>_DEINVI_00006.bam(.bai)
-# in OUT_DIR (a few GB).
+# The .sra (45 / 89 GB) and FASTQ (~150-200 GB) stay on the node's local disk
+# (/data/tmp) and are deleted on exit; prefetch gets an explicit output dir
+# because its default (~/ncbi) would overflow the home quota.
+# Kept: <SRR>_DEINVI_00006.bam(.bai) in OUT_DIR (a few GB).
 
 set -euo pipefail
+
+BASE_DIR=/private/groups/meyerlab/esteiger
 
 SRR=$1
 PRESET=$2
 CHROM=DEINVI_00006
-GENOME=/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked
-OUT_DIR=/private/groups/meyerlab/esteiger/inversions/longreads
+GENOME=${BASE_DIR}/genome/DEINVI_genome.fasta.masked
+OUT_DIR=${BASE_DIR}/inversions/longreads
 LOCAL=/data/tmp/longread_${SLURM_JOB_ID}
 THREADS=${SLURM_NTASKS:-32}
 
@@ -57,7 +57,7 @@ echo "$(date): FASTQ $(du -h ${FASTQ} | cut -f1)"
 
 # 3. align to the whole genome (so reads from elsewhere don't pile onto
 #    DEINVI_00006), keep header + every alignment on DEINVI_00006 (primary,
-#    supplementary and secondary -- split parts are what mark breakpoints).
+#    supplementary and secondary; split parts mark breakpoints).
 #    -Y: soft-clip supplementary alignments so their full sequence is kept.
 minimap2 -t ${THREADS} -ax ${PRESET} -Y --MD ${GENOME} ${FASTQ} \
     | awk -v c=${CHROM} '/^@/ || $3 == c' \

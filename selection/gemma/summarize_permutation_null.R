@@ -1,17 +1,17 @@
 #!/usr/bin/env Rscript
-# Compares the observed lambda/hit-count (on a SNP subset) against a
-# permutation-null distribution built by shuffling phenotype-individual
-# pairing (genotype, kinship, and covariates left untouched) and rerunning
-# the same LMM. Reports an empirical p-value for each statistic.
+# Compares observed lambda and Bonferroni hit count on a SNP subset against a
+# phenotype-permutation null; reports empirical p-values and a histogram figure.
 #
 # Usage: Rscript summarize_permutation_null.R <var_name> <n_perm> <out_dir>
+
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
 
 args     <- commandArgs(trailingOnly = TRUE)
 var_name <- args[1]
 n_perm   <- as.integer(args[2])
 out_dir  <- args[3]
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs")
+.libPaths(file.path(BASE_DIR, "software/R_libs"))
 library(data.table)
 
 get_pvec <- function(f) fread(f, header = TRUE, select = "p_lrt")$p_lrt

@@ -1,4 +1,8 @@
 #!/bin/bash
+# ngsLD on one per-scaffold GL file (>4x Strauss individuals).
+# Usage: ngsLD.sh <scaffold.tsv.gz>  (run by ngsLD_launch.sh)
+
+BASE_DIR=/private/groups/meyerlab/esteiger
 
 TSV=$1
 prefix="./"
@@ -6,11 +10,11 @@ TSV=${TSV#"$prefix"}
 suffix=".tsv.gz"
 string=${TSV%"$suffix"}
 
-cd /private/groups/meyerlab/esteiger/variant_calling/ngsLD
+cd ${BASE_DIR}/variant_calling/ngsLD
 
-NGSLD="/private/groups/meyerlab/esteiger/software/ngsLD/ngsLD"
-BAMLIST="/private/groups/meyerlab/esteiger/mapping/merged/bamlist_4x_strauss.txt"
-SITES_DB="/private/groups/meyerlab/esteiger/variant_calling/angsd/postParalog_MAF.sites"
+NGSLD="${BASE_DIR}/software/ngsLD/ngsLD"
+BAMLIST="${BASE_DIR}/mapping/merged/bamlist_4x_strauss.txt"
+SITES_DB="${BASE_DIR}/variant_calling/angsd/postParalog_MAF.sites"
 
 N_INDIVIDUALS=$(wc -l < "$BAMLIST")
 N_SITES=$(zcat "$TSV" | wc -l)
@@ -21,11 +25,11 @@ if [ -f "${string}_prune.ld" ]; then
     exit 0
 fi
 
-# Create sorted (lexicographic chr, numeric pos) sites file for this chunk
+# positions for this scaffold, sorted by chr then numeric position
 grep "${string}" "$SITES_DB" | sort -k1,1 -k2,2n > "$SITES"
 
-# Calculate LD for all sites within 300kb
-# (300kb chosen because some apparent structural variation spans this distance)
+# LD for all site pairs within 300 kb
+# (300 kb chosen because some apparent structural variation spans this distance)
 $NGSLD \
     --geno "$TSV" \
     --probs \

@@ -1,6 +1,13 @@
 #!/usr/bin/env Rscript
+# OHANA_plot_Strauss.R
+# Plot OHANA results within Strauss (Tranquillon Mtn): Evanno delta K, NMI
+# against sub-locality, ancestry bar plots per K and a K=6 pie-chart map.
+# Run in structure/OHANA/ after launch_ohana_year1_strauss.sh (needs strauss/best_runs.txt).
+# R library: BASE_DIR/software/R_libs/
+# Usage: Rscript OHANA_plot_Strauss.R
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs/")
+.libPaths(file.path(BASE_DIR, "software/R_libs/"))
 library(ggplot2)
 library(tidyr)
 library(scatterpie)
@@ -32,13 +39,13 @@ proj <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
 
 # Crop the coast off
 crop_extent <- st_bbox(c(xmin = -120.7, xmax = -120.1, ymin = 34.4, ymax = 34.9), crs = st_crs(proj))
-CA<-st_read("/private/groups/meyerlab/esteiger/env/study_area/GVTP_clip.shp")
+CA<-st_read(file.path(BASE_DIR, "env/study_area/GVTP_clip.shp"))
 CA<-st_make_valid(CA)
 CA <- st_crop(CA, crop_extent)
 CA<- st_simplify(CA)
 
 # Read in the DEM and build contour lines for the pie-chart map
-DEM <- rast("/private/groups/meyerlab/esteiger/env/tranquillon_mountain_30m.dem")
+DEM <- rast(file.path(BASE_DIR, "env/tranquillon_mountain_30m.dem"))
 crs(DEM) <- "EPSG:26710"
 DEM_transformed <- project(DEM, proj)
 contour_lines <- as.contour(DEM_transformed, levels = seq(0, 800, 25))
@@ -68,8 +75,7 @@ print(P_deltaK)
 dev.off()
 
 
-# Always read in the best-likelihood run (per best_runs.txt) for each K,
-# rather than hard-coding which iteration or which K values were run.
+# Read the best-likelihood run for each K from best_runs.txt
 best_runs <- read.table(paste0(LOCALITY, "/best_runs.txt"), header=FALSE, sep="\t",
                          col.names=c("K", "iteration", "loglik"))
 
@@ -83,38 +89,27 @@ for (k in sort(unique(best_runs$K))) {
 }
 
 
-my_order<-read.table(paste0("/private/groups/meyerlab/esteiger/mapping/merged/bamlist_", LOCALITY, ".txt"), header=F)
+my_order<-read.table(paste0(file.path(BASE_DIR, "mapping/merged/bamlist_"), LOCALITY, ".txt"), header=F)
 my_order$index <- seq(1, nrow(my_order))
 my_order$V1 <- sub(".*/([^/]+)$", "\\1", my_order$V1)
 my_order$V1 <- gsub("_rmdup.bam", "", my_order$V1)
 
 
 #What's the population info for these samples?
-pop<-read.table("/private/groups/meyerlab/esteiger/field_data.txt", header=T, sep="\t")
+pop<-read.table(file.path(BASE_DIR, "field_data.txt"), header=T, sep="\t")
 pop<-unique(pop)
 pop<-merge(pop[,c("SampleID", "Year", "Lat", "Long", "Cov", "OHANA_order")], my_order, by.x="SampleID", by.y="V1", all.y=F)
 my_pop<-pop[order(pop$index),]
 
 
-# Deterministic ancestry-component coloring, persistent across K: the first
-# plot (K=2) gets two base placeholder colors (blue, sky) by component size,
-# since nothing has genuinely differentiated yet. From K=3 on, a component's
-# color is tied to a *specific identity*, not to emergence order alone:
-#   - "diffuse" components (no individual has membership > 0.9 in it -- i.e.
-#     nobody really "belongs" to it) are always green, a single fixed
-#     identity reused every time one appears at any K. This is important:
-#     a component can have a locality as its plurality by argmax count and
-#     still be genuinely diffuse (e.g. everyone sitting around ~30%), which
-#     is not the same thing as that locality having actually broken off.
-#   - Otherwise, the component's identity is whichever locality dominates
-#     its high-confidence (>0.9) members; a locality's color, once assigned
-#     on first appearance, is reused every time that locality resurfaces at
-#     a higher K (including if it later splits into multiple components).
-# This guarantees a locality's color never appears before that locality has
-# genuinely broken off (real, high-confidence members), and never changes
-# identity once assigned. Each locality identity maps to a fixed color;
-# any real identity not in this dictionary (unanticipated) falls back to
-# a small extra palette, assigned on first appearance.
+# Ancestry-component colours, persistent across K. At the first K the two
+# components get base colours by size. From then on:
+#   - components with no individual above STRONG_THRESHOLD (0.9) membership are
+#     "diffuse" and always green, even if one locality is the plurality;
+#   - otherwise a component takes the identity of the locality that dominates
+#     its > 0.9 members, and that locality keeps its colour at every higher K.
+# A locality's colour therefore appears only once it has truly split off.
+# Unanticipated identities fall back to a small extra palette.
 identity_colors <- c(
   "L72" = "#EE8866",   # orange
   "L73" = "#99DDFF",   # sky
@@ -148,9 +143,8 @@ build_persistent_colors <- function(all_k) {
     colors <- setNames(rep(NA_character_, k), comp_cols)
 
     if (k == all_k[1]) {
-      # First K: nothing has resolved yet -- just a size-ranked base pair,
-      # using the colors that L88 (by far the largest locality) and L73
-      # will end up permanently owning anyway.
+      # First K: size-ranked base pair, using the colours that L88 (largest
+      # locality) and L73 keep at every later K
       ord <- order(-comp_sizes)
       colors[ord[1]] <- identity_colors[["L88"]]
       colors[ord[2]] <- identity_colors[["L73"]]
@@ -162,14 +156,9 @@ build_persistent_colors <- function(all_k) {
           keys[c] <- "GENERIC"
         } else {
           tab <- sort(table(as.character(d$OHANA_order[strong])), decreasing = TRUE)
-          # Ties (or near-ties, common with small strong-member counts) get
-          # broken toward whichever candidate is already a known identity,
-          # rather than alphabetically -- an alphabetical tiebreak can hand
-          # a brand-new label to what is really just noise around an
-          # already-established component (e.g. the big persistent bulk
-          # component occasionally has as many high-confidence members from
-          # a minor locality as from its true dominant one, purely by
-          # chance in a given run).
+          # Ties go to a candidate that is already a known identity rather than
+          # alphabetically, so chance ties in the large bulk component do not
+          # create a new label.
           tied <- names(tab)[tab == tab[1]]
           known <- tied[paste0("L", tied) %in% names(identity_color)]
           loc <- if (length(known) > 0) known[1] else tied[1]
@@ -185,10 +174,8 @@ build_persistent_colors <- function(all_k) {
         keys[ord[1]] <- "MINOR_GENERIC"
       }
 
-      # When the same real locality identity claims multiple simultaneous
-      # components (that locality splitting further at this K), the more
-      # western one is a distinct sub-group and gets turquoise instead of
-      # sharing the locality's usual color.
+      # If one locality claims several components at this K, the most western
+      # is a distinct sub-group and gets turquoise.
       real_keys <- unique(keys[!keys %in% c("GENERIC", "MINOR_GENERIC")])
       for (rk in real_keys) {
         comps <- which(keys == rk)
@@ -201,7 +188,7 @@ build_persistent_colors <- function(all_k) {
       for (c in seq_len(k)) {
         key <- keys[c]
         if (key == "MINOR_GENERIC") {
-          colors[c] <- "#DDDDDD"  # grey -- distinct from L80's pink
+          colors[c] <- "#DDDDDD"  # grey, distinct from L80's pink
         } else if (key == "WEST_SPLIT") {
           colors[c] <- "#44BB99"
         } else {
@@ -237,9 +224,8 @@ for (k in sort(unique(best_runs$K))) {
 }
 
 
-# NMI against OHANA_order sub-locality, per K -- there's no coarser
-# "population" label for this within-Strauss dataset, so OHANA_order is
-# the only ground truth available.
+# NMI against OHANA_order sub-locality per K (the only ground truth within
+# Strauss).
 normalized_mutual_info <- function(known, assignment) {
   tab <- table(known, assignment)
   n <- sum(tab)
@@ -286,15 +272,12 @@ cat("Best K according to NMI:", best_k, "\n")
 all_k <- sort(unique(best_runs$K))
 color_state <- build_persistent_colors(all_k)
 
-# Build one bar-plot panel per K (ordered by locality "clumps of plants",
-# no facet strips -- this dataset is a single population, not several).
+# One bar-plot panel per K, ordered by locality ("clumps of plants"), no facet
+# strips.
 mkplot <- function(k) {
   dl <- get(paste0("data_long_", k))
   cols <- color_state[[as.character(k)]]$colors
-  # At K=6 specifically, show the pink (L80) component as grey instead --
-  # a one-off display choice for this row only; L80 stays pink at every
-  # other K so the persistent color-per-identity scheme is otherwise
-  # untouched.
+  # At K=6 only, show the pink (L80) component as grey
   if (k == 6) {
     cols[cols == "#FFAABB"] <- "#DDDDDD"
   }
@@ -324,14 +307,9 @@ jpeg(sprintf("%s/ohana_K%d.jpg", LOCALITY, display_k), width=4000, height=1000)
 print(get(paste0("P", display_k)) + theme(axis.text=element_text(size=30)))
 dev.off()
 
-# Experimental variant (2026-10-22, per user request): same K=6 data, but
-# split into one panel per stand (OHANA_order) instead of one continuous
-# bar, with very little space between panels. Stands numbered 1-9 in the
-# same order as the inbreeding/nucleotide-diversity boxplots (72,73,75,
-# 78,80,85,87,89,88); 79 is folded into the same panel as 78 ("4") rather
-# than getting its own, per user decision. Written to a separate file
-# (not replacing ohana_K6.jpg) since this is an experiment, not a
-# replacement for the original.
+# K=6 split into one panel per stand (OHANA_order), numbered 1-9 in the same
+# order as the inbreeding and diversity boxplots (72,73,75,78,80,85,87,89,88);
+# 79 shares panel 4 with 78.
 stand_labels_k6 <- c("72"="1", "73"="2", "75"="3", "78"="4", "79"="4",
                       "80"="5", "85"="6", "87"="7", "89"="8", "88"="9")
 dl6 <- get(paste0("data_long_", display_k))
@@ -343,11 +321,8 @@ p_ohana_k6_bystand <- ggplot(data=dl6, aes(x=as.factor(index), y=as.numeric(Perc
   geom_bar(stat="identity", color=NA, width=1) +   # no bar outlines (panel borders kept)
   scale_fill_manual("", values=cols6) +
   scale_y_continuous(name="Ancestry composition", expand=c(0,0), breaks=seq(0,1,.2)) +
-  # facet_grid (not facet_wrap) specifically so space="free_x" can size each
-  # panel's width by its own number of individuals -- facet_wrap always
-  # gives every panel equal width regardless of scales="free_x", which
-  # crushed stand 88 (397 of 736 individuals) into a sliver so thin its
-  # bars' black outlines blotted out the fill entirely.
+  # facet_grid with space="free_x" so panel width scales with the number of
+  # individuals (facet_wrap gives equal widths)
   facet_grid(~stand_label, scales="free_x", space="free_x", switch="x") +
   gvtp_theme +
   theme(axis.text.x=element_blank(),
@@ -377,21 +352,14 @@ x_padding <- diff(x_range) * 0.05
 y_padding <- diff(y_range) * 0.05
 x_extent <- diff(x_range) + 2 * x_padding
 y_extent <- diff(y_range) + 2 * y_padding
-# coord_sf renders lon/lat with latitude foreshortening (1 degree of
-# longitude covers less true distance than 1 degree of latitude away from
-# the equator), so the plotting device's aspect ratio needs that same
-# cos(latitude) correction -- otherwise the canvas doesn't match what
-# coord_sf actually draws and the map ends up with uneven margins.
+# coord_sf draws lon/lat with latitude foreshortening, so the device aspect
+# ratio needs the same cos(latitude) correction.
 mean_lat_rad <- mean(y_range) * pi / 180
 aspect_ratio <- (x_extent * cos(mean_lat_rad)) / y_extent
 base_height <- 1500
 plot_width <- base_height * aspect_ratio
 plot_height <- base_height
-base_scale <- 0.02 * (2/3) * (1.1/1.4) * 0.9 * 0.85 * 1.15 * 1.15  # was 0.20; ~10x too large, then 2/3;
-                                          # then padding tightened (0.2->0.05), which
-                                          # shrinks x_extent and would otherwise regrow
-                                          # the pies; then a tiny bit smaller again;
-                                          # then a bit bigger again (*1.15), then bigger again (*1.15)
+base_scale <- 0.02 * (2/3) * (1.1/1.4) * 0.9 * 0.85 * 1.15 * 1.15
 jitter_amount <- x_extent / 80
 
 best_dat <- best_dat %>%

@@ -1,25 +1,15 @@
 #!/usr/bin/env python3
 """
-Supplementary figure for DEINVI_00006 (chr 6): fog Manhattan, per-sample
-winPCA PC1 and heterozygosity, and synteny with sunflower and lettuce.
-x-aligned with the main stacked figure (DEINVI_0006_stacked.py: same width,
-margins, x range, fonts); grey box = the centromere call (call_centromeres.py).
+Supplementary figure for DEINVI_00006 (chr 6), x-aligned with
+DEINVI_0006_stacked.py; grey box = centromere call (call_centromeres.py).
 
-A: fog GWAS Manhattan for chr 6 (peak-filtered points exported by
-   annotated_manhattan.R; dashed line = Bonferroni threshold).
-B, C: winPCA PC1 (all-locality 5% MAF GL run, sign-flip-corrected copy) and
-   proportion of heterozygous sites (all-locality >= 8x GT run), one line per
-   individual, coloured by long-term fog (winpca's colour scale, reversed
-   because metadata.tsv stores fog negated). For plotting only, each locality
-   is capped at PER_SITE_CAP random individuals (fixed seed; individuals in
-   both runs first); lines drawn in descending fog so low-fog samples are on
-   top. Same sampling and colours as DEINVI_0006_stacked.py.
-D, E: GENESPACE syntenic hits (blkID assigned, i.e. gene pairs inside a
-   syntenic block) between Deinandra and sunflower (Helianthus annuus) and
-   lettuce (Lactuca sativa). One point per syntenic gene pair:
-   x = gene position on DEINVI_00006, y = position of its partner gene on the
-   partner chromosome. Each partner chromosome with >= MIN_HITS hits gets its
-   own band; collinear runs appear as diagonal lines.
+A: fog GWAS Manhattan (points exported by annotated_manhattan.R; dashed line =
+   Bonferroni threshold).
+B, C: winPCA PC1 (all-locality 5% MAF GL run, sign-flipped) and proportion of
+   heterozygous sites (all-locality >= 8x GT run), one line per individual,
+   coloured by fog; each locality capped at PER_SITE_CAP individuals for plotting.
+D, E: GENESPACE syntenic hits (blkID assigned) with sunflower and lettuce; one
+   band per partner chromosome with >= MIN_HITS hits.
 
 Usage: chr6_synteny_panels.py
 Output: OUT
@@ -31,13 +21,15 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-GS = "/private/groups/meyerlab/esteiger/inversions/synteny/genespace"
-GEMMA_DIR = "/private/groups/meyerlab/esteiger/selection/gemma"
-WINPCA_DIR = "/private/groups/meyerlab/esteiger/inversions/all_localities"
-WINPCA_META = "/private/groups/meyerlab/esteiger/inversions/metadata.tsv"
-CENTROMERES = "/private/groups/meyerlab/esteiger/inversions/centromere/centromeres.tsv"
-FAI = "/private/groups/meyerlab/esteiger/inversions/filtered_scaffolds.fai"
-OUT = "/private/groups/meyerlab/esteiger/inversions/DEINVI_0006_synteny.jpg"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+GS = f"{BASE_DIR}/inversions/synteny/genespace"
+GEMMA_DIR = f"{BASE_DIR}/selection/gemma"
+WINPCA_DIR = f"{BASE_DIR}/inversions/all_localities"
+WINPCA_META = f"{BASE_DIR}/inversions/metadata.tsv"
+CENTROMERES = f"{BASE_DIR}/inversions/centromere/centromeres.tsv"
+FAI = f"{BASE_DIR}/inversions/filtered_scaffolds.fai"
+OUT = f"{BASE_DIR}/inversions/DEINVI_0006_synteny.jpg"
 CHROM = "DEINVI_00006"
 PC1 = f"{WINPCA_DIR}/DEINVI_00006_GL_maf5_flipped.pc_1.tsv.gz"
 HETP = f"{WINPCA_DIR}/DEINVI_00006_GT_all8x.hetp.tsv.gz"
@@ -81,7 +73,7 @@ def manhattan(ax):
 
 
 def winpca_lines(pc1, hetp):
-    """Per-site subsample, fog values, colour normalization and drawing order (as in the stacked figure)."""
+    """Per-site subsample, fog values, colour normalization and drawing order."""
     meta = pd.read_csv(WINPCA_META, sep="\t", index_col=0)
     samples = pc1.columns.union(hetp.columns)
     fog_val = -pd.to_numeric(meta["fog"], errors="coerce").reindex(samples)
@@ -121,8 +113,7 @@ def main():
     hetp = pd.read_csv(HETP, sep="\t", index_col=0)
     fog_val, norm, order = winpca_lines(pc1, hetp)
 
-    # one band per partner chromosome with >= MIN_HITS hits, ordered by the
-    # chr 6 position of its first hits (left to right down the figure)
+    # one band per partner chromosome, ordered by chr 6 position of its first hits
     bands = {}
     for sp, _ in SPECIES:
         d = data[sp]
@@ -170,8 +161,7 @@ def main():
     all_axes[-1].set_xlabel(f"Position on chromosome {CHROM} (Mb)", fontsize=LABEL_SIZE)
     fig.subplots_adjust(left=0.12, right=0.9, top=0.98, bottom=0.06)
 
-    # A-C y-titles as aligned axis labels; one single-line y-title per species,
-    # centred over its bands; panel letters at the top of each panel / group
+    # y-titles and panel letters
     for ax in top_axes:
         ax.yaxis.set_label_coords(-0.06, 0.5)
     het_ax.yaxis.set_label_coords(-0.048, 0.5)    # two-line title: keep clear of the panel letter

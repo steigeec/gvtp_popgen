@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Temporal test for EVERY fog outlier peak (not just the chr 6 one shown in
-DEINVI_0006_stacked.py panel J), so the chr 6 result can be judged against
-the other peaks rather than in isolation.
+Temporal test for every fog outlier peak (the chr 6 peak is shown in
+DEINVI_0006_stacked.py panel J).
 
 Peaks: retained (40000_3) fog outlier SNPs, grouped into peaks of SNPs on the
 same scaffold <= 40 kb apart (as in fog_deinvi6_figure.R).
@@ -12,19 +11,14 @@ long-term fog (same polarization as fog_deinvi6_figure.R).
 Statistic (same as panel J): favorable-allele frequency in FOGGY_YEAR minus
 the pooled other years.
   - Random-SNP null: random SNPs (one per random 2 kb region off chr 6, same
-    regions as DEINVI_0006_stacked.py) polarized EXACTLY like the outliers
+    regions as DEINVI_0006_stacked.py) polarized like the outliers
     (coverage-adjusted regression on long-term fog across all samples, as in
     germ_year_polygenic.R), matched on Strauss favorable-allele frequency.
-    Asks: is the 2021 shift larger than for any allele that tracks fog on the
-    landscape? Single SNPs are noisier than a multi-SNP peak average, so this
-    null is conservative.
   - Centromere-matched null: as the random-SNP null, but the random SNPs are
     drawn at a similar distance from their own scaffold's centromere as the
     peak is from its centromere (temporal_null.py: d +- max(1 Mb, 25% of d),
     scaffolds with a confident centromere call, chr 6 and +-500 kb around
-    fog peaks excluded). Low-recombination regions near centromeres can have
-    more variable allele frequencies, so this null is the fairer comparison
-    for centromere-proximal peaks. NaN for peaks on scaffolds with no call.
+    fog peaks excluded). NaN for peaks on scaffolds with no call.
   - Within-stand permutation: years shuffled within OHANA_order stands.
   - Benjamini-Hochberg FDR across peaks for both p-values.
 
@@ -37,14 +31,16 @@ import pandas as pd
 
 import temporal_null as tn
 
-GEMMA = "/private/groups/meyerlab/esteiger/selection/gemma"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+GEMMA = f"{BASE_DIR}/selection/gemma"
 OUTLIERS = f"{GEMMA}/fog/outliers_for_annot_40000_3_fog.txt"
 DOSAGE = f"{GEMMA}/fog/dosage_fog.txt"
 SCAF_MAP = f"{GEMMA}/scaffold_snp_map.txt"
-ENV = "/private/groups/meyerlab/esteiger/env_var.txt"
-FIELD = "/private/groups/meyerlab/esteiger/field_data.txt"
-VCF_DS = "/private/groups/meyerlab/esteiger/variant_calling/angsd/postParalog_MAF_auto_GLimp_clean.vcf.gz"
-FAI = "/private/groups/meyerlab/esteiger/inversions/filtered_scaffolds.fai"
+ENV = f"{BASE_DIR}/env_var.txt"
+FIELD = f"{BASE_DIR}/field_data.txt"
+VCF_DS = f"{BASE_DIR}/variant_calling/angsd/postParalog_MAF_auto_GLimp_clean.vcf.gz"
+FAI = f"{BASE_DIR}/inversions/filtered_scaffolds.fai"
 NULL_CACHE = f"{GEMMA}/fog/temporal_null_random_snps_allsamples.tsv.gz"
 N_NULL_REGIONS = 8000
 OUT = f"{GEMMA}/fog/fog_peaks_temporal.tsv"

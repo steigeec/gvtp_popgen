@@ -1,23 +1,21 @@
 #!/bin/bash
-# =============================================================================
-# estimate_rohmu.sh — Prep and launch rohmu calibration
+# estimate_rohmu.sh
+# Calibrate ROHan's rohmu parameter. Selects the 2 highest-coverage samples per
+# cluster (1 for Dangermond) so the calibration set spans the expected range of
+# inbreeding, builds 3x subsampled BAMs from the 6x BAMs, writes the phase 1
+# task list, and submits rohmu_phase1.sh and rohmu_phase2.sh.
 #
-# Stratified sample selection: 2 highest-coverage samples per population
-# cluster (1 for Dangermond), ensuring the calibration set spans the expected
-# range of inbreeding.  Builds 3x subsampled BAMs, writes phase 1 task list,
-# and submits rohmu_phase1.sh (SLURM array) and rohmu_phase2.sh (dependent).
-#
-# Run interactively:  bash estimate_rohmu.sh
-# Or via srun:        srun --mem=4gb --time=1:00:00 bash estimate_rohmu.sh
-#
-# Prerequisite: run prep_samples.sh first (needs subsampled_bams/).
-# =============================================================================
+# Requires: prep_samples.sh (subsampled_bams/)
+# Usage:    bash estimate_rohmu.sh
+#           srun --mem=4gb --time=1:00:00 bash estimate_rohmu.sh
 
 set -euo pipefail
 
-FIELD_DATA=/private/groups/meyerlab/esteiger/field_data.txt
-OUTDIR=/private/groups/meyerlab/esteiger/diversity/ROH/ROHan
-SCRIPT_DIR=/private/groups/meyerlab/esteiger/gvtp_popgen/diversity/ROHan
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+FIELD_DATA=${BASE_DIR}/field_data.txt
+OUTDIR=${BASE_DIR}/diversity/ROH/ROHan
+SCRIPT_DIR=${BASE_DIR}/gvtp_popgen/diversity/ROHan
 SUBSAMPLE_DIR=$OUTDIR/subsampled_bams
 ROHMU_DIR=$OUTDIR/rohmu_calibration
 

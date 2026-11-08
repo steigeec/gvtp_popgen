@@ -1,23 +1,16 @@
 #!/usr/bin/env python3
 """
-Meiotic-drive check at the chromosome 6 centromere: is one centromeric
-haplotype at uniformly high frequency across populations, with low genetic
-differentiation at the centromere? (A driver spreads through gene flow,
-homogenizing frequencies; local adaptation does the opposite.)
+Centromeric haplotype frequencies and FST at the chromosome 6 centromere.
 
-1. Centromeric haplotype frequencies per population. Haplotype groups come
-   from breakpoint_samples.tsv (block INV1_45.5-49.1: A / Het / B, from k-means
-   on all-locality winPCA PC1 across the centromeric block), so
-   freq(A) = (2 n_A + n_Het) / 2n. The COPG2-rearrangement sub-lineage of B
-   (j1_genotypes.tsv; 0/1/2 copies) is shown within B.
+1. Haplotype frequencies per population from breakpoint_samples.tsv (block
+   INV1_45.5-49.1: A / Het / B), freq(A) = (2 n_A + n_Het) / 2n, with the
+   COPG2-rearrangement sub-lineage of B (j1_genotypes.tsv) shown within B.
    Untrustworthy-coordinate plants excluded; CDFW and CDFW_MR pooled (Gaviota).
-2. FST at the chr 6 centromere call (centromeres.tsv) for every pair of the five
-   populations with ANGSD window-FST tracks (selection/window_Fst/<a>.<b>_window:
-   50-kb windows, 10-kb step, realSFS fst stats2), compared with
-   (i) all genome-wide windows (percentile), and (ii) the same statistic at the
-   other chromosomes' centromere calls (each = median FST of windows whose
-   midpoint lies in the call). The chr 6 fog peak (49.03-49.15 Mb) is shown
-   for contrast. Windows with < MIN_SITES sites are dropped.
+2. FST at the chr 6 centromere call (centromeres.tsv) for each population pair
+   with ANGSD window-FST tracks (selection/window_Fst/<a>.<b>_window), compared
+   with all genome-wide windows and with the other chromosomes' centromere
+   calls (median FST of windows with midpoint in the call). Windows with
+   < MIN_SITES sites are dropped.
 
 Usage: centromere_haplotype_fst.py
 Output: OUT_FIG, OUT_FREQ, OUT_FST
@@ -32,13 +25,15 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, "/private/groups/meyerlab/esteiger/gvtp_popgen/selection/gemma")
+sys.path.insert(0, f"{BASE_DIR}/gvtp_popgen/selection/gemma")
 import temporal_null as tn
 
-BP = "/private/groups/meyerlab/esteiger/inversions/breakpoints"
-FIELD = "/private/groups/meyerlab/esteiger/field_data.txt"
-FST_DIR = "/private/groups/meyerlab/esteiger/selection/window_Fst"
-OUT_DIR = "/private/groups/meyerlab/esteiger/inversions/centromere"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+BP = f"{BASE_DIR}/inversions/breakpoints"
+FIELD = f"{BASE_DIR}/field_data.txt"
+FST_DIR = f"{BASE_DIR}/selection/window_Fst"
+OUT_DIR = f"{BASE_DIR}/inversions/centromere"
 OUT_FIG, OUT_FREQ, OUT_FST = (f"{OUT_DIR}/centromere_haplotype_fst.jpg", f"{OUT_DIR}/centromere_haplotype_freq.tsv",
                               f"{OUT_DIR}/centromere_fst.tsv")
 CHROM, PEAK = "DEINVI_00006", (49_031_257, 49_146_391)

@@ -15,7 +15,9 @@ Input:  BASE_DIR/wind/hrrr/hrrr_wind_raw_points_earth.csv,
         BASE_DIR/wind/station_obs/{VGN,TQS}_asos_2000_2024.csv
 Output: BASE_DIR/wind/hrrr/validate_{station}_matched.csv,
         BASE_DIR/wind/hrrr_vs_station_validation_summary.csv
-Env:    'herbie' conda env
+Conda env: herbie
+  conda create -n herbie -c conda-forge python=3.11 herbie-data=2026.3.0
+  (Herbie also brings pandas, xarray, cfgrib and scipy)
 Usage:  /private/home/esteiger/miniconda3/envs/herbie/bin/python3 validate_hrrr_vs_stations.py
 """
 

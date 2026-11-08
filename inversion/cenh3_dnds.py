@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """
-dN/dS of CENH3 (centromeric histone H3) in D. increscens subsp. villosa versus
-relatives, and against a genome-wide background of Deinandra-sunflower 1:1
-orthologs. Rationale: centromere drive is expected to leave adaptive amino-acid
-change in CENH3 (an "arms race"), concentrated in its N-terminal tail, which
-shows up as elevated dN/dS relative to other genes and/or positively selected
-sites.
+dN/dS of CENH3 in D. increscens subsp. villosa versus relatives, and against a
+genome-wide background of Deinandra-sunflower 1:1 orthologs.
 
 CENH3 sequences (coding sequences; cds/ and OUT_DIR/cenh3_cds_raw.fa):
   Deinandra       IDmodified-mRNA-22870, a gene model that merges an Argonaute
@@ -53,7 +49,10 @@ Steps
 Usage: cenh3_dnds.py [n_procs]
 Output: OUT_DIR/ (alignments, yn00_pairs_cenh3.tsv, codeml_tests.tsv,
         codeml_M8_BEB_sites.tsv, background_yn00.tsv, summary.txt)
-Tools: conda env DNDS_ENV (paml, mafft, pal2nal).
+Conda env: dnds (BASE_DIR/software/miniconda3/envs/dnds)
+  conda create -n dnds -c conda-forge -c bioconda paml=4.10.10 mafft=7.526 \
+    pal2nal=14.1 miniprot=0.18
+(the tools are called by path through DNDS_ENV)
 """
 
 import gzip
@@ -71,13 +70,15 @@ import pandas as pd
 from Bio.Seq import Seq
 from scipy.stats import chi2
 
-OUT_DIR = "/private/groups/meyerlab/esteiger/inversions/centromere/cenh3_dnds"
+BASE_DIR = "/private/groups/meyerlab/esteiger"
+
+OUT_DIR = f"{BASE_DIR}/inversions/centromere/cenh3_dnds"
 CDS_DIR = f"{OUT_DIR}/cds"
-DNDS_ENV = "/private/groups/meyerlab/esteiger/software/miniconda3/envs/dnds/bin"
+DNDS_ENV = f"{BASE_DIR}/software/miniconda3/envs/dnds/bin"
 MAFFT, PAL2NAL, YN00, CODEML = (f"{DNDS_ENV}/{t}" for t in ("mafft", "pal2nal.pl", "yn00", "codeml"))
-DEIN_CDS = "/private/groups/meyerlab/esteiger/genome/remove_duplicates_rm_internalstops_longest_isoform.cds"
+DEIN_CDS = f"{BASE_DIR}/genome/remove_duplicates_rm_internalstops_longest_isoform.cds"
 HA_CDS = f"{CDS_DIR}/Helianthus_annuus.HanXRQr2.0-SUNRISE.cds.all.fa.gz"
-SYNHITS = "/private/groups/meyerlab/esteiger/inversions/synteny/genespace/syntenicHits/Helianthus_annuus_vs_Deinandra.synHits.txt.gz"
+SYNHITS = f"{BASE_DIR}/inversions/synteny/genespace/syntenicHits/Helianthus_annuus_vs_Deinandra.synHits.txt.gz"
 N_BACKGROUND, SEED = 2000, 1
 TREE = ("(Athaliana,Lsativa_chr2,((Deinandra,Layia),"
         "((Hannuus_Chr14,Hanomalus_Chr14,Hdebilis_Chr14),(Hannuus_Chr15,Hanomalus_Chr15))));")
@@ -131,7 +132,7 @@ def write_paml(aln, path):
 
 
 def yn00(aln, workdir):
-    """pairwise dN, dS, omega (Yang & Nielsen 2000) -> DataFrame"""
+    """Pairwise dN, dS, omega (Yang & Nielsen 2000) as a DataFrame."""
     write_paml(aln, f"{workdir}/seq.phy")
     with open(f"{workdir}/yn00.ctl", "w") as f:
         f.write("seqfile = seq.phy\noutfile = yn.out\nverbose = 0\nicode = 0\nweighting = 0\ncommonf3x4 = 0\n")
@@ -166,8 +167,7 @@ def codeml(aln, workdir, model, tree):
         f"seqfile = seq.phy\ntreefile = tree.nwk\noutfile = mlc\nnoisy = 0\nverbose = 0\nrunmode = 0\n"
         f"seqtype = 1\nCodonFreq = 2\nclock = 0\nfix_kappa = 0\nkappa = 2\n{settings}\n"
         f"cleandata = 0\nfix_blength = 0\nmethod = 0\n")
-    # this codeml build exits with status 1 even after a successful fit, so success
-    # is judged by the likelihood line in the output instead of the exit status
+    # this codeml build exits 1 even on success; check for the lnL line instead
     run([CODEML, "codeml.ctl"], cwd=d, check=False)
     mlc = open(f"{d}/mlc").read()
     if "lnL(ntime" not in mlc:

@@ -8,17 +8,22 @@
 #SBATCH --time=168:00:00
 #SBATCH --output=pop_SAF_%j.log
 
-cd /private/groups/meyerlab/esteiger/mapping/merged
+# Per-population SAFs (ANGSD -doSaf) over all_sites, for SFS, heterozygosity,
+# Fst and Watterson's theta.
 
-OUTDIR=/private/groups/meyerlab/esteiger/SAF/population
-REF=/private/groups/meyerlab/esteiger/genome/DEINVI_genome.fasta.masked
-SITES=/private/groups/meyerlab/esteiger/selection/TajD/all_sites
-# all_sites includes both variable (non-MAF-filtered) and invariable sites passing quality
-# filters. Including invariable sites is essential so that the SFS denominator reflects the
-# true number of sites examined, avoiding upward bias in heterozygosity and Fst estimates.
-# No MAF filter is applied: the ANGSD genotype-likelihood framework handles sequencing errors
-# probabilistically, and MAF filtering would truncate rare variants, distorting the SFS.
-CHRS=/private/groups/meyerlab/esteiger/selection/TajD/all_chrs.txt
+BASE_DIR=/private/groups/meyerlab/esteiger
+
+cd ${BASE_DIR}/mapping/merged
+
+OUTDIR=${BASE_DIR}/SAF/population
+REF=${BASE_DIR}/genome/DEINVI_genome.fasta.masked
+SITES=${BASE_DIR}/selection/TajD/all_sites
+# all_sites includes both variable (no MAF filter) and invariable sites passing quality
+# filters. Invariable sites are needed so the SFS denominator reflects the true number of
+# sites examined, avoiding upward bias in heterozygosity and Fst estimates.
+# No MAF filter: ANGSD's genotype-likelihood framework handles sequencing errors
+# probabilistically, and a MAF filter would truncate rare variants and distort the SFS.
+CHRS=${BASE_DIR}/selection/TajD/all_chrs.txt
 
 mkdir -p "${OUTDIR}"
 
@@ -28,18 +33,15 @@ BAMLISTS=(
   [conception]="bamlist_4x_conception.txt"
   [lionhead]="bamlist_4x_lionhead.txt"
   [cdfw]="bamlist_4x_cdfw.txt"
-  # we use a subset of 16 high-coverage individuals for our SAF computation, so that Strauss is equally represented relative to the other populations
+  # 16 high-coverage individuals, so Strauss is represented equally with the other populations
   [strauss]="bamlist_4x_strauss_top16.txt"
   [Dangermond]="bamlist_Dangermond.txt"
-  # per-sampling-year cohorts within Strauss (Tranquillon Mtn), >4x-depth individuals only,
-  # to compare Ne across years for the same population
+  # per-sampling-year cohorts within Strauss, >4x individuals only
   [strauss_year1]="bamlist_year1_4x_strauss.txt"
   [strauss_year2]="bamlist_year2_4x_strauss.txt"
   [strauss_year3]="bamlist_year3_4x_strauss.txt"
 )
-# Temporarily restricted to the new per-year cohorts so the script only computes those SAFs
-# (the population-level SAFs below already exist and would be skipped anyway, but commenting
-# them out avoids re-checking/re-listing them). Uncomment the line below to restore the full run.
+# for the population-level SAFs, use this line instead of the per-year cohorts
 # POPS=(arguello conception lionhead cdfw strauss Dangermond)
 POPS=(strauss_year1 strauss_year2 strauss_year3)
 

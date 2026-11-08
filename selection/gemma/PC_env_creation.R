@@ -1,6 +1,11 @@
 #!/usr/bin/env Rscript
+# PCA of the PCAngsd covariance matrix (>4x samples). Writes GEMMA inputs env.txt and
+# covariates_intercept.txt (intercept, PC1-5, coverage), plus scree, collinearity and PCA plots.
+# R library: BASE_DIR/software/R_libs/
 
-.libPaths("/private/groups/meyerlab/esteiger/software/R_libs/")
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
+
+.libPaths(file.path(BASE_DIR, "software/R_libs/"))
 library(ggplot2)
 library(dplyr)
 library(sf)
@@ -8,8 +13,8 @@ library(patchwork)
 library(psych)
 
 gvtp_theme <- theme_bw() + 
-  theme(text = element_text(size = 50), # Sets size for all text elements
-    axis.text = element_text(angle = 45, hjust=1), # Only specify unique modifications
+  theme(text = element_text(size = 50),
+    axis.text = element_text(angle = 45, hjust=1),
     plot.margin = unit(c(1, 1, 1, 1), "cm"),
     legend.key.height = unit(1, "cm"),
     legend.key.width = unit(1.5, "cm"),
@@ -56,25 +61,25 @@ location_labels <- c(
 )
 
 #What's the population info for these samples?
-pop<-read.table("/private/groups/meyerlab/esteiger/field_data.txt", header=T, sep="\t")
+pop<-read.table(file.path(BASE_DIR, "field_data.txt"), header=T, sep="\t")
 pop<-pop[order(pop$index),]
 pop$Location <- as.factor(pop$Location)
 pop$Year <-as.factor(pop$Year)
 pop$Cov<-as.numeric(pop$Cov)
 
-# Read in the order and filter by it� 
-sample_order<-read.table("/private/groups/meyerlab/esteiger/mapping/merged/bamlist_4x.txt", header=F, sep="\t")
+# Sample order of the bamlist (matches the PCAngsd covariance matrix)
+sample_order<-read.table(file.path(BASE_DIR, "mapping/merged/bamlist_4x.txt"), header=F, sep="\t")
 sample_order$index<-seq(1, nrow(sample_order))
 to_remove <- c("_rmdup.bam")
 sample_order$V1 <- gsub(paste(to_remove, collapse = "|"), "", sample_order$V1)
 my_pop<-merge(pop, sample_order, by.y="V1", by.x="SampleID", all=F)
 
 # Read in env variables 
-env<-read.table("/private/groups/meyerlab/esteiger/env_var.txt", header=T, sep="\t")
+env<-read.table(file.path(BASE_DIR, "env_var.txt"), header=T, sep="\t")
 colnames(env)[colnames(env)=="PercVolSoilH20_10cm"] <- "PercH20"
 my_pop<-merge(my_pop, env[, !names(env) %in% c("Year","Cov")], by="SampleID")
 # Read in new env variables from Cal-eDNA
-env<-read.table("/private/groups/meyerlab/esteiger/eDNA_env_data.csv", header=T, sep=",")
+env<-read.table(file.path(BASE_DIR, "eDNA_env_data.csv"), header=T, sep=",")
 colnames(env)[colnames(env) == "terraclimate_palmer_drought_severity_index_30y"] <- "severity"
 colnames(env)[colnames(env) == "terraclimate_severe_drought_month_count_30y"] <- "drought_mn"
 colnames(env)[colnames(env) == "terraclimate_soil_moisture_mm_30y"] <- "moisture"
@@ -84,16 +89,16 @@ my_pop<-merge(my_pop, env, all.x=T, by="SampleID")
 my_pop[my_pop == -999999] <- NA
 
 # eigen decomposition of covariance matrix
-C <- as.matrix(read.table("/private/groups/meyerlab/esteiger/structure/PCAngsd/postParalog_4x_LD.cov"))
+C <- as.matrix(read.table(file.path(BASE_DIR, "structure/PCAngsd/postParalog_4x_LD.cov")))
 e <- eigen(C)
 
-# Plot the screeplot, and examine to decide how many PCs to retain:
+# Scree plot, to decide how many PCs to retain
 scree <- data.frame(
   PC = seq_along(e$values),
   Eigenvalue = e$values
 )
 
-jpeg('/private/groups/meyerlab/esteiger/selection/gemma/scree.jpg', height=1000, width=1000)
+jpeg(file.path(BASE_DIR, "selection/gemma/scree.jpg"), height=1000, width=1000)
 ggplot(scree, aes(x = PC, y = Eigenvalue)) +
   geom_point(size = 3) +
   geom_line() +
@@ -116,22 +121,20 @@ my_pop <- my_pop[order(my_pop$index.y),]
 my_pop <- cbind(my_pop, myPCs)
 stopifnot(all(diff(my_pop$index.y) > 0))
 
-# Remove excluded individuals, then export env variables and PCs
+# Remove 13 individuals with untrustworthy coordinates, then export env variables and PCs
 EXCLUDE<-c("4548", "4549", "4550", "4551", "4552", "4553", "4554", "4555", "4556", "4557", "4559", "4561", "4562")
 my_pop_filtered <- my_pop[!(my_pop$SampleID %in% EXCLUDE),]
-write.table(my_pop_filtered[,c("PercH20",  "CHILI",  "BIO12", "BIO15", "BIO18", "fog", "fog_germ_yr", "BIO12_germ_yr", "BIO15_germ_yr", "BIO18_germ_yr", "BCM_30y", "BCM_germ_yr", "deficit", "severity", "drought_mn", "moisture")], "/private/groups/meyerlab/esteiger/selection/gemma/env.txt", row.names=F, col.names=F)
-# GEMMA does not add an implicit intercept when -c supplies custom
-# covariates (unlike when -c is omitted), so it has to be included here as
-# an explicit leading column of 1s.
+write.table(my_pop_filtered[,c("PercH20",  "CHILI",  "BIO12", "BIO15", "BIO18", "fog", "fog_germ_yr", "BIO12_germ_yr", "BIO15_germ_yr", "BIO18_germ_yr", "BCM_30y", "BCM_germ_yr", "deficit", "severity", "drought_mn", "moisture")], file.path(BASE_DIR, "selection/gemma/env.txt"), row.names=F, col.names=F)
+# GEMMA does not add an intercept when -c is given, so include a column of 1s
 covariates <- cbind(Intercept = 1, my_pop_filtered[,c("PC1", "PC2", "PC3", "PC4", "PC5", "Cov")])
-write.table(covariates, "/private/groups/meyerlab/esteiger/selection/gemma/covariates_intercept.txt", row.names=F, col.names=F)
+write.table(covariates, file.path(BASE_DIR, "selection/gemma/covariates_intercept.txt"), row.names=F, col.names=F)
 
-# Also save collinearity plot to examine
-jpeg("/private/groups/meyerlab/esteiger/selection/gemma/collin.jpg", height=1000, width=1000)
+# Collinearity of environmental variables
+jpeg(file.path(BASE_DIR, "selection/gemma/collin.jpg"), height=1000, width=1000)
 pairs.panels(my_pop[,c("PercH20",  "CHILI",  "BIO12", "BIO15", "BIO18", "fog", "fog_germ_yr", "BIO12_germ_yr", "BIO15_germ_yr", "BIO18_germ_yr", "BCM_30y", "BCM_germ_yr", "deficit", "severity", "drought_mn", "moisture")], scale=T)
 dev.off()
 
-# COLORED BY LOCALITY
+# Colored by locality
 P1<-ggplot(data=my_pop, aes(x=PC1, y=PC2, fill=Clusters)) +
   geom_point(colour="black", size=9, shape=21)+
   scale_fill_manual(values=popcolors, guide="none")+
@@ -143,9 +146,9 @@ P3<-ggplot(my_pop, aes(PC3, PC4, fill=Clusters)) +
   labs(x=paste("PC3 (", PC3,"% variance)"), y=paste("PC4 (",PC4,"% variance)"), fill="Region", shape="Age")+
  gvtp_theme + coord_cartesian(expand = TRUE)
 
-jpeg('/private/groups/meyerlab/esteiger/selection/gemma/PCA_12.jpg', height=1000, width=1000)
+jpeg(file.path(BASE_DIR, "selection/gemma/PCA_12.jpg"), height=1000, width=1000)
 print(P1)
 dev.off()
-jpeg('/private/groups/meyerlab/esteiger/selection/gemma/PCA_34.jpg', height=1000, width=1000)
+jpeg(file.path(BASE_DIR, "selection/gemma/PCA_34.jpg"), height=1000, width=1000)
 print(P3)
 dev.off()

@@ -1,25 +1,24 @@
 #!/usr/bin/env Rscript
-# Long-term linear trend in summer fog at each plant's location, from the
-# Kling fog record (env/fog/Kling/timeseries.tif: one band per year,
-# 1950-2014; the same file and extraction as the Kling_detrend code in
-# env/extract_env.R). For each plant, a least-squares line is fitted to its
-# annual Kling fog values ~ year; the slope measures how much fog has changed
-# at that location over 1950-2014 (negative = fog loss).
+# Linear trend in summer fog at each plant's location, from the annual Kling
+# fog record (env/fog/Kling/timeseries.tif, 1950-2014). Fits annual fog ~ year
+# per plant; negative slope = fog loss.
 #
-# Output (env_var.txt is NOT modified): OUT, one row per SampleID with
-#   kling_fog_trend_slope   change in Kling fog per year (Kling units)
+# Output: OUT, one row per SampleID (env_var.txt is not modified) with
+#   kling_fog_trend_slope   change in Kling fog per year
 #   kling_fog_trend_decade  the same per decade
 #   kling_fog_trend_p       p-value of the slope
 #   kling_fog_mean          mean of the annual values, 1950-2014
 #
 # Usage: Rscript fog_trend.R
 
-.libPaths(c("/private/groups/meyerlab/esteiger/software/R_libs", .libPaths()))
+BASE_DIR <- "/private/groups/meyerlab/esteiger"
+
+.libPaths(c(file.path(BASE_DIR, "software/R_libs"), .libPaths()))
 suppressMessages(library(terra))
 
-ENV_FILE <- "/private/groups/meyerlab/esteiger/env_var.txt"
-KLING    <- "/private/groups/meyerlab/esteiger/env/fog/Kling/timeseries.tif"
-OUT      <- "/private/groups/meyerlab/esteiger/env/fog_trend_by_sample.tsv"
+ENV_FILE <- file.path(BASE_DIR, "env_var.txt")
+KLING    <- file.path(BASE_DIR, "env/fog/Kling/timeseries.tif")
+OUT      <- file.path(BASE_DIR, "env/fog_trend_by_sample.tsv")
 
 env <- read.delim(ENV_FILE, colClasses = c(SampleID = "character"))
 env <- env[!duplicated(env$SampleID) & !is.na(env$Lat) & !is.na(env$Long), ]
